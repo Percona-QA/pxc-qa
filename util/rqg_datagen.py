@@ -38,7 +38,8 @@ class RQGDataGen:
         os.system(create_db)
         if int(self.version) > int("050700"):
             create_user = self.basedir + "/bin/mysql --user=root --socket=" + socket + \
-                ' -Bse"create user rqg_test@\'%\' identified with mysql_native_password by \'\'; ' \
+                ' -Bse" drop user if exists \'rqg_test\'@\'%\'; FLUSH PRIVILEGES; ' \
+                'create user rqg_test@\'%\' identified with mysql_native_password by \'\'; ' \
                 'grant all on *.* to rqg_test@\'%\';" 2>&1'
             os.system(create_user)
         # Checking RQG module
