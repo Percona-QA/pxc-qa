@@ -1,24 +1,36 @@
 Random QA script
 -------------
 
-This script is a small test and not a suite. pxc_util.py will start a 3 node cluster. we can configure it to start 3 node cluster with different options apart from the default.
+This script is a small test and not a suite. pxc_util.py will start a 3 node cluster. We can configure it to start 3 node cluster with different options apart from the default. 
+If we need to start cluster with `innodb-buffer-pool-size=128M` then we can edit pxc_util.py as below 
+result = server_startup.start_cluster('--innodb-buffer-pool-size=128M ')
 We can also enable encryption options with `--encryption-run`
+We can also enable debug options with `--debug`
 
 Random QA run log
 --------------
 ```
-$ python3 suite/random_qa/pxc_util.py --start
+$ python3 suite/random_qa/pxc_util.py --start --debug
 
-05:53:49  Startup sanity check                                                                                [ ✓ ]
-05:53:49  Configuration file creation                                                                         [ ✓ ]
-05:54:30  Initializing cluster                                                                                [ ✓ ]
-05:55:30  Cluster startup                                                                                     [ ✓ ]
-05:55:30  Database connection                                                                                 [ ✓ ]
-05:55:30  PXC connection string                                                                               [ ✓ ]
-	/dev/shm/qa/PXC_8.0.26/bin/mysql --user=root --socket=/dev/shm/qa/node1/mysql.sock
-	/dev/shm/qa/PXC_8.0.26/bin/mysql --user=root --socket=/dev/shm/qa/node2/mysql.sock
-	/dev/shm/qa/PXC_8.0.26/bin/mysql --user=root --socket=/dev/shm/qa/node3/mysql.sock
-
+13:26:04  Startup sanity check                                                                                [ ✓ ]
+13:26:04  Configuration file creation                                                                         [ ✓ ]
+/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17/bin/mysqld --no-defaults  --initialize-insecure  --basedir=/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17 --datadir=/dev/shm/qa/node1 > /dev/shm/qa/log/startup1.log 2>&1
+/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17/bin/mysqld --no-defaults  --initialize-insecure  --basedir=/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17 --datadir=/dev/shm/qa/node2 > /dev/shm/qa/log/startup2.log 2>&1
+/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17/bin/mysqld --no-defaults  --initialize-insecure  --basedir=/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17 --datadir=/dev/shm/qa/node3 > /dev/shm/qa/log/startup3.log 2>&1
+13:26:10  Initializing cluster                                                                                [ ✓ ]
+/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17/bin/mysqld --defaults-file=/dev/shm/qa/conf/node1.cnf --datadir=/dev/shm/qa/node1 --basedir=/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17 --innodb-buffer-pool-size=128M  --wsrep-provider=/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17/lib/libgalera_smm.so --wsrep-new-cluster --log-error=/dev/shm/qa/log/node1.err > /dev/shm/qa/log/node1.err 2>&1 &
+/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17/bin/mysql --user=root --socket=/dev/shm/qa/node1/mysql.sock -Bse"delete from mysql.user where user='';" > /dev/null 2>&1
+/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17/bin/mysqld --defaults-file=/dev/shm/qa/conf/node2.cnf --datadir=/dev/shm/qa/node2 --basedir=/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17 --innodb-buffer-pool-size=128M  --wsrep-provider=/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17/lib/libgalera_smm.so --log-error=/dev/shm/qa/log/node2.err > /dev/shm/qa/log/node2.err 2>&1 &
+/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17/bin/mysql --user=root --socket=/dev/shm/qa/node2/mysql.sock -Bse"delete from mysql.user where user='';" > /dev/null 2>&1
+/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17/bin/mysqld --defaults-file=/dev/shm/qa/conf/node3.cnf --datadir=/dev/shm/qa/node3 --basedir=/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17 --innodb-buffer-pool-size=128M  --wsrep-provider=/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17/lib/libgalera_smm.so --log-error=/dev/shm/qa/log/node3.err > /dev/shm/qa/log/node3.err 2>&1 &
+/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17/bin/mysql --user=root --socket=/dev/shm/qa/node3/mysql.sock -Bse"delete from mysql.user where user='';" > /dev/null 2>&1
+13:26:57  Cluster startup                                                                                     [ ✓ ]
+13:26:57  Database connection                                                                                 [ ✓ ]
+/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17/bin/mysql --user=root --socket=/dev/shm/qa/node1/mysql.sock -e'drop database if exists test ; create database test ;' > /dev/null 2>&1
+13:26:57  PXC connection string                                                                               [ ✓ ]
+	/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17/bin/mysql --user=root --socket=/dev/shm/qa/node1/mysql.sock
+	/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17/bin/mysql --user=root --socket=/dev/shm/qa/node2/mysql.sock
+	/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17/bin/mysql --user=root --socket=/dev/shm/qa/node3/mysql.sock
 
 
 $ python3 qa_framework.py --testname=suite/random_qa/random_mysqld_option_test.py
