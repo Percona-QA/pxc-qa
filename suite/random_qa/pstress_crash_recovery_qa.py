@@ -5,6 +5,7 @@ import argparse
 import time
 import subprocess
 import itertools
+import random
 cwd = os.path.dirname(os.path.realpath(__file__))
 parent_dir = os.path.normpath(os.path.join(cwd, '../../'))
 sys.path.insert(0, parent_dir)
@@ -82,17 +83,18 @@ class RandomPstressQA:
     def data_load(self, socket, db):
         # pstress crash recovery qa
         self.start_pxc()
+        n = random.randint(10000, 99999)
         for i in range(1, 10):
             PSTRESS_CMD = PSTRESS_BIN + " --database=" + db + " --threads=50 --logdir=" + \
                          WORKDIR + "/log --log-all-queries --log-failed-queries --user=root --socket=" + \
-                         socket + " --seed 1000 --tables 5 --records 100 " + \
-                         PSTRESS_EXTRA + " --seconds 30 --grammar-file " + \
+                         socket + " --seed " + str(n) + " --tables 5 --records 100 " + \
+                         PSTRESS_EXTRA + " --seconds 60 --grammar-file " + \
                          PSTRESS_GRAMMAR_FILE + " --step " + str(i) + " > " + \
                          WORKDIR + "/log/pstress_run.log"
             utility_cmd.check_testcase(0, "PSTRESS RUN command : " + PSTRESS_CMD)
             query_status = os.system(PSTRESS_CMD)
             if int(query_status) != 0:
-                utility_cmd.check_testcase(1, "ERROR!: PSTRESS run is failed")
+                utility_cmd.check_testcase(1, "ERROR!: PSTRESS run failed")
             # kill existing mysqld process
             if debug == 'YES':
                 print("Killing existing mysql process using 'kill -9' command")
