@@ -15,7 +15,7 @@ config.ini
 ```
 [config]
 workdir = /dev/shm/qa
-basedir = /dev/shm/qa/Percona-XtraDB-Cluster_8.0.19-10.1_Linux.x86_64.el7
+basedir = /dev/shm/qa/PXC_tarball
 server=pxc
 node = 3
 user = root
@@ -23,8 +23,8 @@ ps1_socket = /tmp/psnode1.sock
 ps2_socket = /tmp/psnode2.sock
 ps3_socket = /tmp/psnode3.sock
 pt_basedir = /dev/shm/qa/percona-toolkit-3.0.10
-pquery_bin = /dev/shm/qa/pquery3-pxc
-pquery_grammer_file = /dev/shm/qa/grammer.sql
+pstress_bin = /dev/shm/qa/pstress/src/pstress-pxc
+pstress_grammar_file = /dev/shm/qa/pstress/src/grammar.sql
 
 [sysbench]
 sysbench_user=sysbench

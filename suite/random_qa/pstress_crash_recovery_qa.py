@@ -87,7 +87,7 @@ class RandomPstressQA:
         for i in range(1, 10):
             PSTRESS_CMD = PSTRESS_BIN + " --database=" + db + " --threads=50 --logdir=" + \
                          WORKDIR + "/log --log-all-queries --log-failed-queries --user=root --socket=" + \
-                         socket + " --seed " + str(n) + " --tables 5 --records 100 " + \
+                         socket + " --seed " + str(n) + " --tables 15 --records 300 " + \
                          PSTRESS_EXTRA + " --seconds 60 --grammar-file " + \
                          PSTRESS_GRAMMAR_FILE + " --step " + str(i) + " > " + \
                          WORKDIR + "/log/pstress_run.log"
