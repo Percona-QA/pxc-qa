@@ -77,7 +77,7 @@ class RandomPstressQA:
             pstress_cmd = PSTRESS_BIN + " --database=" + db + " --threads=" + str(table) + " --logdir=" + \
                 WORKDIR + "/log --log-all-queries --log-failed-queries --user=root --socket=" + \
                 socket + " --seed " + str(seed) + " --tables " + str(table) + " " + \
-                PSTRESS_EXTRA + " --seconds 30  --grammar-file " + \
+                PSTRESS_EXTRA + " --seconds 300  --grammar-file " + \
                 PSTRESS_GRAMMAR_FILE + " --records " + str(record) + "> " + \
                 WORKDIR + "/log/pstress_run.log"
             utility_cmd.check_testcase(0, "PSTRESS RUN command : " + pstress_cmd)
