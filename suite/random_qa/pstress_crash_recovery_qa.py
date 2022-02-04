@@ -88,7 +88,7 @@ class RandomPstressQA:
             PSTRESS_CMD = PSTRESS_BIN + " --database=" + db + " --threads=50 --logdir=" + \
                          WORKDIR + "/log --log-all-queries --log-failed-queries --user=root --socket=" + \
                          socket + " --seed " + str(n) + " --tables 25 --records 1000 " + \
-                         PSTRESS_EXTRA + " --seconds 60 --grammar-file " + \
+                         PSTRESS_EXTRA + " --seconds 300 --grammar-file " + \
                          PSTRESS_GRAMMAR_FILE + " --step " + str(i) + " > " + \
                          WORKDIR + "/log/pstress_run.log"
             utility_cmd.check_testcase(0, "PSTRESS RUN command : " + PSTRESS_CMD)
