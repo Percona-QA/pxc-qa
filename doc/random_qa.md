@@ -140,5 +140,69 @@ PXC Random MySQLD options test
 06:26:38  Added random mysqld option: archive=0
                                                               [ ✓ ]
 [...]
+
+
+$ python3 qa_framework.py --testname=suite/random_qa/pstress_crash_recovery_qa.py
+--------------------
+PXC Random PSTRESS QA
+--------------------
+06:32:02  Startup sanity check                                                                                [ ✓ ]
+06:32:02  Configuration file creation                                                                         [ ✓ ]
+06:32:43  Initializing cluster                                                                                [ ✓ ]
+06:33:42  Cluster startup                                                                                     [ ✓ ]
+06:33:42  Database connection                                                                                 [ ✓ ]
+06:33:42  PSTRESS RUN command : /home/vagrant/pstress/src/pstress-pxc --database=test --threads=10 --logdir=/dev/shm/qa/log --log-all-queries --log-failed-queries --user=root --socket=/dev/shm/qa/node1/mysql.sock --seed 1000 --tables 5 --records 10 --no-encryption --seconds 30 --grammar-file /home/vagrant/pstress/src/grammar.sql --step 1 > /dev/shm/qa/log/pstress_run.log[ ✓ ]
+06:34:25  Cluster restart is successful                                                                       [ ✓ ]
+06:34:57  Cluster restart is successful                                                                       [ ✓ ]
+06:35:26  Cluster restart is successful                                                                       [ ✓ ]
+06:35:26  PSTRESS RUN command : /home/vagrant/pstress/src/pstress-pxc --database=test --threads=10 --logdir=/dev/shm/qa/log --log-all-queries --log-failed-queries --user=root --socket=/dev/shm/qa/node1/mysql.sock --seed 1000 --tables 5 --records 10 --no-encryption --seconds 30 --grammar-file /home/vagrant/pstress/src/grammar.sql --step 2 > /dev/shm/qa/log/pstress_run.log[ ✓ ]
+06:36:08  Cluster restart is successful                                                                       [ ✓ ]
+06:36:38  Cluster restart is successful                                                                       [ ✓ ]
+06:37:08  Cluster restart is successful                                                                       [ ✓ ]
+06:37:08  PSTRESS RUN command : /home/vagrant/pstress/src/pstress-pxc --database=test --threads=10 --logdir=/dev/shm/qa/log --log-all-queries --log-failed-queries --user=root --socket=/dev/shm/qa/node1/mysql.sock --seed 1000 --tables 5 --records 10 --no-encryption --seconds 30 --grammar-file /home/vagrant/pstress/src/grammar.sql --step 3 > /dev/shm/qa/log/pstress_run.log[ ✓ ]
+06:37:48  Cluster restart is successful                                                                       [ ✓ ]
+06:38:18  Cluster restart is successful                                                                       [ ✓ ]
+06:38:49  Cluster restart is successful                                                                       [ ✓ ]
+06:38:49  PSTRESS RUN command : /home/vagrant/pstress/src/pstress-pxc --database=test --threads=10 --logdir=/dev/shm/qa/log --log-all-queries --log-failed-queries --user=root --socket=/dev/shm/qa/node1/mysql.sock --seed 1000 --tables 5 --records 10 --no-encryption --seconds 30 --grammar-file /home/vagrant/pstress/src/grammar.sql --step 4 > /dev/shm/qa/log/pstress_run.log[ ✓ ]
+06:39:29  Cluster restart is successful                                                                       [ ✓ ]
+06:39:59  Cluster restart is successful                                                                       [ ✓ ]
+06:40:31  Cluster restart is successful                                                                       [ ✓ ]
+06:40:31  PSTRESS RUN command : /home/vagrant/pstress/src/pstress-pxc --database=test --threads=10 --logdir=/dev/shm/qa/log --log-all-queries --log-failed-queries --user=root --socket=/dev/shm/qa/node1/mysql.sock --seed 1000 --tables 5 --records 10 --no-encryption --seconds 30 --grammar-file /home/vagrant/pstress/src/grammar.sql --step 5 > /dev/shm/qa/log/pstress_run.log[ ✓ ]
+06:41:11  Cluster restart is successful                                                                       [ ✓ ]
+06:41:40  Cluster restart is successful                                                                       [ ✓ ]
+06:42:11  Cluster restart is successful                                                                       [ ✓ ]
+06:42:11  PSTRESS RUN command : /home/vagrant/pstress/src/pstress-pxc --database=test --threads=10 --logdir=/dev/shm/qa/log --log-all-queries --log-failed-queries --user=root --socket=/dev/shm/qa/node1/mysql.sock --seed 1000 --tables 5 --records 10 --no-encryption --seconds 30 --grammar-file /home/vagrant/pstress/src/grammar.sql --step 6 > /dev/shm/qa/log/pstress_run.log[ ✓ ]
+
+
+$ python3 qa_framework.py --testname=suite/random_qa/pstress_random_qa.py
+
+--------------------
+PXC Random PSTRESS QA
+--------------------
+06:53:59  Startup sanity check                                                                                [ ✓ ]
+06:53:59  Configuration file creation                                                                         [ ✓ ]
+06:54:39  Initializing cluster                                                                                [ ✓ ]
+06:55:38  Cluster startup                                                                                     [ ✓ ]
+06:55:38  Database connection                                                                                 [ ✓ ]
+06:55:38  PSTRESS RUN command : /home/vagrant/pstress/src/pstress-pxc --database=test --threads=16 --logdir=/dev/shm/qa/log --log-all-queries --log-failed-queries --user=root --socket=/dev/shm/qa/node1/mysql.sock --seed 100 --tables 16 --no-encryption --seconds 30  --grammar-file /home/vagrant/pstress/src/grammar.sql --records 100> /dev/shm/qa/log/pstress_run.log[ ✓ ]
+06:56:27  Startup sanity check                                                                                [ ✓ ]
+06:56:28  Configuration file creation                                                                         [ ✓ ]
+06:57:10  Initializing cluster                                                                                [ ✓ ]
+06:58:11  Cluster startup                                                                                     [ ✓ ]
+06:58:11  Database connection                                                                                 [ ✓ ]
+06:58:11  PSTRESS RUN command : /home/vagrant/pstress/src/pstress-pxc --database=test --threads=16 --logdir=/dev/shm/qa/log --log-all-queries --log-failed-queries --user=root --socket=/dev/shm/qa/node1/mysql.sock --seed 500 --tables 16 --no-encryption --seconds 30  --grammar-file /home/vagrant/pstress/src/grammar.sql --records 100> /dev/shm/qa/log/pstress_run.log[ ✓ ]
+06:58:55  Startup sanity check                                                                                [ ✓ ]
+06:58:55  Configuration file creation                                                                         [ ✓ ]
+06:59:36  Initializing cluster                                                                                [ ✓ ]
+07:00:37  Cluster startup                                                                                     [ ✓ ]
+07:00:37  Database connection                                                                                 [ ✓ ]
+07:00:37  PSTRESS RUN command : /home/vagrant/pstress/src/pstress-pxc --database=test --threads=16 --logdir=/dev/shm/qa/log --log-all-queries --log-failed-queries --user=root --socket=/dev/shm/qa/node1/mysql.sock --seed 1000 --tables 16 --no-encryption --seconds 30  --grammar-file /home/vagrant/pstress/src/grammar.sql --records 100> /dev/shm/qa/log/pstress_run.log[ ✓ ]
+07:01:23  Startup sanity check                                                                                [ ✓ ]
+07:01:23  Configuration file creation                                                                         [ ✓ ]
+07:02:05  Initializing cluster                                                                                [ ✓ ]
+07:03:04  Cluster startup                                                                                     [ ✓ ]
+07:03:04  Database connection                                                                                 [ ✓ ]
+07:03:04  PSTRESS RUN command : /home/vagrant/pstress/src/pstress-pxc --database=test --threads=16 --logdir=/dev/shm/qa/log --log-all-queries --log-failed-queries --user=root --socket=/dev/shm/qa/node1/mysql.sock --seed 100 --tables 16 --no-encryption --seconds 30  --grammar-file /home/vagrant/pstress/src/grammar.sql --records 500> /dev/shm/qa/log/pstress_run.log[ ✓ ]
+[...]
 ```
 
