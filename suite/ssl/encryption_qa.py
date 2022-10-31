@@ -39,6 +39,10 @@ class EncryptionTest:
         if int(version) < int("080000"):
             checksum = table_checksum.TableChecksum(PT_BASEDIR, BASEDIR, WORKDIR, NODE, socket, debug)
             checksum.sanity_check()
+        else:
+            result = utility_cmd.check_table_count(BASEDIR, 'test', WORKDIR + '/node1/mysql.sock',
+                                                   WORKDIR + '/node2/mysql.sock')
+            utility_cmd.check_testcase(result, "Checksum run for DB: test")
 
         sysbench = sysbench_run.SysbenchRun(BASEDIR, WORKDIR, socket, debug)
         result = sysbench.sanity_check(db)

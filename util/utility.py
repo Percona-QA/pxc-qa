@@ -25,7 +25,7 @@ class Utility:
     def check_testcase(self, result, testcase, is_terminate=None):
         # print testcase status based on success/failure output.
         now = datetime.now().strftime("%H:%M:%S ")
-        if result == 0:
+        if result == 0 or result is None:
             print(now + ' ' + f'{testcase:100}' + '[ \u2713 ]')
         else:
             print(now + ' ' + f'{testcase:100}' + '[ \u2717 ]')
@@ -87,7 +87,7 @@ class Utility:
                 print(query)
                 print('Table count ' + table_count_node2)
             if table_count_node1 == table_count_node2:
-                return 0
+                continue
             else:
                 print("\tTable(" + db + '.' + table + " ) checksum is different")
                 return 1
