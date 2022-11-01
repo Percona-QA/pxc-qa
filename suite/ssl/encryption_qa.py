@@ -36,20 +36,21 @@ class EncryptionTest:
         # Sysbench data load
         version = utility_cmd.version_check(BASEDIR)
         checksum = ""
-        if int(version) < int("080000"):
-            checksum = table_checksum.TableChecksum(PT_BASEDIR, BASEDIR, WORKDIR, NODE, socket, debug)
-            checksum.sanity_check()
-        else:
-            result = utility_cmd.check_table_count(BASEDIR, 'test', WORKDIR + '/node1/mysql.sock',
-                                                   WORKDIR + '/node2/mysql.sock')
-            utility_cmd.check_testcase(result, "Checksum run for DB: test")
-
+        
         sysbench = sysbench_run.SysbenchRun(BASEDIR, WORKDIR, socket, debug)
         result = sysbench.sanity_check(db)
         utility_cmd.check_testcase(result, "Sysbench run sanity check")
         result = sysbench.sysbench_load(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS, SYSBENCH_LOAD_TEST_TABLE_SIZE)
         utility_cmd.check_testcase(result, "Sysbench data load (threads : " + str(SYSBENCH_THREADS) + ")")
         sysbench.sysbench_ts_encryption(db, SYSBENCH_THREADS)
+
+        if int(version) < int("080000"):
+            checksum = table_checksum.TableChecksum(PT_BASEDIR, BASEDIR, WORKDIR, NODE, socket, debug)
+            checksum.sanity_check()
+        else:
+            result = utility_cmd.check_table_count(BASEDIR, db, WORKDIR + '/node1/mysql.sock',
+                                                   WORKDIR + '/node2/mysql.sock')
+            utility_cmd.check_testcase(result, "Checksum run for DB : " + db)
 
     def encryption_qa(self):
         # Encryption QA
