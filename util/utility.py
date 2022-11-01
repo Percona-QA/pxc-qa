@@ -25,7 +25,7 @@ class Utility:
     def check_testcase(self, result, testcase, is_terminate=None):
         # print testcase status based on success/failure output.
         now = datetime.now().strftime("%H:%M:%S ")
-        if result == 0 or result is None:
+        if result == 0:
             print(now + ' ' + f'{testcase:100}' + '[ \u2713 ]')
         else:
             print(now + ' ' + f'{testcase:100}' + '[ \u2717 ]')
@@ -70,8 +70,9 @@ class Utility:
         query = basedir + '/bin/mysql -uroot ' + db + ' --socket=' + \
                 socket1 + ' -Bse"show tables;"'
         tables = os.popen(query).read().rstrip()
+        tables_names = tables.split('\n')
         # Compare the table checksum between node1 and node2
-        for table in tables.split('\n'):
+        for index, table in enumerate(tables_names):
             query = basedir + '/bin/mysql -uroot --socket=' + \
                     socket1 + ' -Bse"checksum table ' + \
                     db + '.' + table + ';"'
@@ -83,11 +84,17 @@ class Utility:
                     socket2 + ' -Bse"checksum table ' + \
                     db + '.' + table + ';"'
             table_count_node2 = os.popen(query).read().rstrip()
+
             if self.debug == 'YES':
                 print(query)
                 print('Table count ' + table_count_node2)
             if table_count_node1 == table_count_node2:
-                continue
+                # Using Mod, get index of element and check if we reached to the end
+                # of list, if so return otherwise continue checking other tables.
+                next_index = (index + 1) % len(tables_names)
+                if next_index == 0:
+                    return 0
+                else: continue
             else:
                 print("\tTable(" + db + '.' + table + " ) checksum is different")
                 return 1
