@@ -84,7 +84,6 @@ class Utility:
                     socket2 + ' -Bse"checksum table ' + \
                     db + '.' + table + ';"'
             table_count_node2 = os.popen(query).read().rstrip()
-
             if self.debug == 'YES':
                 print(query)
                 print('Table count ' + table_count_node2)

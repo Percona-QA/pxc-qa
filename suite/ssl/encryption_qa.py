@@ -39,6 +39,7 @@ class EncryptionTest:
         if int(version) < int("080000"):
             checksum = table_checksum.TableChecksum(PT_BASEDIR, BASEDIR, WORKDIR, NODE, socket, debug)
             checksum.sanity_check()
+
         sysbench = sysbench_run.SysbenchRun(BASEDIR, WORKDIR, socket, debug)
         result = sysbench.sanity_check(db)
         utility_cmd.check_testcase(result, "Sysbench run sanity check")
