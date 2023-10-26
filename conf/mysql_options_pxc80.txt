@@ -858,7 +858,6 @@ local-infile=0
 lock-wait-timeout=31536000
 lock-wait-timeout=0
 lock-wait-timeout=2048
-log-bin
 log-bin-trust-function-creators=1
 log-bin-trust-function-creators=0
 log-bin-use-v1-row-events=1
