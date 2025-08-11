@@ -1,64 +1,59 @@
 import os
 import configparser
 from util import utility
-
+from util.db_connection import DbConnection
 
 # Reading initial configuration
 config = configparser.ConfigParser()
 script_dir = os.path.dirname(os.path.realpath(__file__))
 parent_dir = os.path.normpath(os.path.join(script_dir, '../'))
-config.read(parent_dir + '/config.ini')
-workdir = config['config']['workdir']
-basedir = config['config']['basedir']
-user = config['config']['user']
+rand_gen_dir = parent_dir + '/randgen'
+gen_data_pl = rand_gen_dir + '/gendata.pl'
 
 
 class RQGDataGen:
-    def __init__(self, basedir, workdir, user, debug):
-        self.basedir = basedir
-        self.workdir = workdir
-        self.user = user
+    def __init__(self, node: DbConnection, debug):
+        self.__node = node
         self.debug = debug
         self.utility_cmd = utility.Utility(debug)
-        self.version = self.utility_cmd.version_check(self.basedir)
+        self.version = self.utility_cmd.version_check(node.get_base_dir())
 
-    def initiate_rqg(self, module, db, socket):
+    def initiate_rqg(self, module, db, work_dir):
         """ Method to initiate RQD data load against
             Percona XtraDB cluster.
         """
+        port = self.__node.execute_get_value("select @@port")
+        queries = ['drop database if exists ' + db, 'create database ' + db]
+        self.__node.execute_queries(queries)
         # Get RQG module
-        module = parent_dir + '/randgen/conf/' + module
-        master_port = self.basedir + "/bin/mysql --user=root --socket=" + socket + \
-            ' -Bse"select @@port" 2>&1'
-        port = os.popen(master_port).read().rstrip()
+        module = rand_gen_dir + '/conf/' + module
         # Create schema for RQG run
-        create_db = self.basedir + "/bin/mysql --user=root --socket=" + socket + \
-            ' -Bse"drop database if exists ' + db + \
-            ';create database ' + db + ';" 2>&1'
-        os.system(create_db)
+
         if int(self.version) > int("050700"):
-            create_user = self.basedir + "/bin/mysql --user=root --socket=" + socket + \
-                ' -Bse" drop user if exists \'rqg_test\'@\'%\'; FLUSH PRIVILEGES; ' \
-                'create user rqg_test@\'%\' identified with mysql_native_password by \'\'; ' \
-                'grant all on *.* to rqg_test@\'%\';" 2>&1'
-            os.system(create_user)
+            queries = ["drop user if exists 'rqg_test'@'%'",
+                       "create user rqg_test@'%' identified by ''",
+                       "grant all on *.* to rqg_test@'%'"]
+            self.__node.execute_queries(queries)
+
         # Checking RQG module
-        os.chdir(parent_dir + '/randgen')
+        os.chdir(rand_gen_dir)
         if not os.path.exists(module):
             print(module + ' does not exist in RQG')
             exit(1)
         # Run RQG
         for file in os.listdir(module):
             if file.endswith(".zz"):
-                rqg_command = "perl " + parent_dir + "/randgen/gendata.pl " \
-                              "--dsn=dbi:mysql:host=127.0.0.1:port=" \
-                              + port + ":user=" + self.user + ":database=" + db + " --spec=" + \
+                rqg_command = "perl " + gen_data_pl + \
+                              " --dsn=dbi:mysql:host=127.0.0.1:port=" \
+                              + str(port) + ":user=" + self.__node.get_user() + ":database=" + db + " --spec=" + \
                               module + '/' + file + " > " + \
-                              self.workdir + "/log/rqg_run.log 2>&1"
+                              work_dir + "/log/rqg_run.log 2>&1"
+                if self.debug == 'YES':
+                    print(rqg_command)
                 result = os.system(rqg_command)
                 self.utility_cmd.check_testcase(result, "RQG data load (DB: " + db + ")")
 
-    def pxc_dataload(self, socket):
+    def pxc_dataload(self, work_dir):
         """
             RQG data load for PXC Server
         """
@@ -66,5 +61,5 @@ class RQGDataGen:
             rqg_config = ['galera', 'transactions', 'gis', 'runtime', 'temporal']
         else:
             rqg_config = ['galera', 'transactions', 'partitioning', 'gis', 'runtime', 'temporal']
-        for config in rqg_config:
-            self.initiate_rqg(config, 'db_' + config, socket)
+        for conf in rqg_config:
+            self.initiate_rqg(conf, 'db_' + conf, work_dir)

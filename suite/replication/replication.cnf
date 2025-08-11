@@ -2,5 +2,3 @@
 log_bin=binlog
 binlog_format=ROW
 log_slave_updates=ON
-master_info_repository=TABLE
-relay_log_info_repository=TABLE

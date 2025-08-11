@@ -1,94 +1,61 @@
 #!/usr/bin/env python3
 import os
 import sys
-import argparse
 import itertools
+
 cwd = os.path.dirname(os.path.realpath(__file__))
 parent_dir = os.path.normpath(os.path.join(cwd, '../../'))
 sys.path.insert(0, parent_dir)
+from base_test import *
 from config import *
 from util import sysbench_run
 from util import utility
 from util import table_checksum
 
-# Read argument
-parser = argparse.ArgumentParser(prog='PXC streaming replication test', usage='%(prog)s [options]')
-parser.add_argument('-e', '--encryption-run', action='store_true',
-                    help='This option will enable encryption options')
-parser.add_argument('-d', '--debug', action='store_true',
-                    help='This option will enable debug logging')
-args = parser.parse_args()
-if args.encryption_run is True:
-    encryption = 'YES'
-else:
-    encryption = 'NO'
-if args.debug is True:
-    debug = 'YES'
-else:
-    debug = 'NO'
 
-utility_cmd = utility.Utility(debug)
-utility_cmd.check_python_version()
+class StreamingReplication(BaseTest):
+    def __init__(self):
+        super().__init__(my_extra="--innodb_buffer_pool_size=2G --innodb_log_file_size=1G")
 
-
-class StreamingReplication:
-    def start_server(self, node):
-        my_extra = "--innodb_buffer_pool_size=2G --innodb_log_file_size=1G"
-        utility_cmd.start_pxc(parent_dir, WORKDIR, BASEDIR, node,
-                              WORKDIR + '/node1/mysql.sock', USER, encryption, my_extra)
-
-    def sysbench_run(self, socket, db):
+    def sysbench_run(self):
         # Sysbench data load
-        version = utility_cmd.version_check(BASEDIR)
-        checksum = ""
         if int(version) < int("080000"):
-            checksum = table_checksum.TableChecksum(PT_BASEDIR, BASEDIR, WORKDIR, NODE, socket, debug)
-            checksum.sanity_check()
+            checksum = table_checksum.TableChecksum(self.node1, workdir, pt_basedir, debug)
+            checksum.sanity_check(self.pxc_nodes)
 
-        sysbench = sysbench_run.SysbenchRun(BASEDIR, WORKDIR, socket, debug)
-        result = sysbench.sanity_check(db)
-        utility_cmd.check_testcase(result, "Sysbench run sanity check")
-        result = sysbench.sysbench_load(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS, SYSBENCH_LOAD_TEST_TABLE_SIZE)
-        utility_cmd.check_testcase(result, "Sysbench data load (threads : " + str(SYSBENCH_THREADS) + ")")
+        sysbench = sysbench_run.SysbenchRun(self.node1, debug)
+        sysbench.test_sanity_check(db)
+        sysbench.test_sysbench_load(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS, SYSBENCH_LOAD_TEST_TABLE_SIZE)
 
-    def streaming_replication_qa(self, socket, db):
+    def streaming_replication_qa(self):
         # Streaming Replication QA
         # Create data insert procedure
-        create_procedure = BASEDIR + "/bin/mysql --user=root --socket=" + socket + \
-            ' ' + db + ' -Bse"source ' + cwd + '/sr_procedure.sql " 2>&1'
         if debug == 'YES':
-            print(create_procedure)
-        result = os.system(create_procedure)
-        utility_cmd.check_testcase(result, "Creating streaming replication data insert procedure")
+            print("Creating streaming replication data insert procedure from " + cwd + '/sr_procedure.sql')
+        self.node1.execute("DROP PROCEDURE IF EXISTS test.sr_procedure")
+        self.node1.execute_query_from_file(cwd + '/sr_procedure.sql')
+
         wsrep_trx_fragment_unit = ['bytes', 'rows', 'statements']
-        wsrep_trx_fragment_size = [1, 2, 4, 8, 16, 64, 128, 256, 512, 1024]
-        row_count = [100, 1000, 10000, 100000]
+        wsrep_trx_fragment_size = [128]  # 1, 2, 4, 8, 16, 64, 128, 256, 512, 1024
+        row_count = [100000]  # 100, 1000, 10000
         for trx_fragment_unit, trx_fragment_size, rows in \
                 itertools.product(wsrep_trx_fragment_unit, wsrep_trx_fragment_size, row_count):
-            sr_procedure = BASEDIR + "/bin/mysql --user=root --socket=" + socket + \
-                            ' -Bse"call ' + db + '.sr_procedure(' + str(rows) + \
-                            ",'" + trx_fragment_unit + "'," + \
-                            str(trx_fragment_size) + ')" 2>&1'
             if debug == 'YES':
-                print(sr_procedure)
-            result = os.system(sr_procedure)
-            sr_combination = "DML row count " + str(rows) + ", fragment_unit : " + \
-                             trx_fragment_unit + ", fragment_size : " + \
-                             str(trx_fragment_size)
-            utility_cmd.check_testcase(result, "SR testcase( " + sr_combination + " )")
+                print("call " + db + ".sr_procedure")
+            proc_args = [str(rows), trx_fragment_unit, str(trx_fragment_size)]
+            self.node1.call_proc(db + '.sr_procedure', proc_args)
+
+            sr_combination = "DML row count " + proc_args[0] + ", fragment_unit : " + \
+                             proc_args[1] + ", fragment_size : " + proc_args[2]
+            utility_cmd.check_testcase(0, "SR testcase( " + sr_combination + " )")
             if trx_fragment_unit == 'bytes':
-                delete_rows = BASEDIR + "/bin/mysql --user=root --socket=" + socket + \
-                                   ' ' + db + ' -Bse"delete from sbtest1 limit ' + str(rows) + ';" 2>&1'
-                if debug == 'YES':
-                    print(delete_rows)
-                os.system(delete_rows)
+                delete_rows = "delete from " + db + ".sbtest1 limit " + str(rows)
+                self.node1.execute(delete_rows)
 
 
-print("--------------------------------")
-print("\nPXC Streaming Replication test")
-print("--------------------------------")
+utility.test_header("PXC Streaming Replication test")
 streaming_replication = StreamingReplication()
-streaming_replication.start_server(NODE)
-streaming_replication.sysbench_run(WORKDIR + '/node1/mysql.sock', 'test')
-streaming_replication.streaming_replication_qa(WORKDIR + '/node1/mysql.sock', 'test')
-utility_cmd.stop_pxc(WORKDIR, BASEDIR, NODE)
+streaming_replication.start_pxc()
+streaming_replication.sysbench_run()
+streaming_replication.streaming_replication_qa()
+streaming_replication.shutdown_nodes()

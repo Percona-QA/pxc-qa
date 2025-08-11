@@ -2,144 +2,93 @@
 import os
 import sys
 import itertools
-import argparse
+
 cwd = os.path.dirname(os.path.realpath(__file__))
 parent_dir = os.path.normpath(os.path.join(cwd, '../../'))
 sys.path.insert(0, parent_dir)
+from base_test import *
 from config import *
-from util import sysbench_run
+from util import sysbench_run, executesql
 from util import utility
 from util import table_checksum
 from util import rqg_datagen
 from util import pxc_startup
-from util import db_connection
-from util import createsql
-
-# Read argument
-parser = argparse.ArgumentParser(prog='PXC replication test', usage='%(prog)s [options]')
-parser.add_argument('-e', '--encryption-run', action='store_true',
-                    help='This option will enable encryption options')
-parser.add_argument('-d', '--debug', action='store_true',
-                    help='This option will enable debug logging')
-args = parser.parse_args()
-if args.debug is True:
-    debug = 'YES'
-else:
-    debug = 'NO'
-
-utility_cmd = utility.Utility(debug)
-utility_cmd.check_python_version()
 
 
-class EncryptionTest:
-    def sysbench_run(self, socket, db):
+class EncryptionTest(BaseTest):
+    def __init__(self):
+        super().__init__(encrypt=True)
+
+    def sysbench_run(self):
         # Sysbench data load
-        version = utility_cmd.version_check(BASEDIR)
-        checksum = ""
         if int(version) < int("080000"):
-            checksum = table_checksum.TableChecksum(PT_BASEDIR, BASEDIR, WORKDIR, NODE, socket, debug)
-            checksum.sanity_check()
+            checksum = table_checksum.TableChecksum(self.node1, workdir, pt_basedir, debug)
+            checksum.sanity_check(self.pxc_nodes)
 
-        sysbench = sysbench_run.SysbenchRun(BASEDIR, WORKDIR, socket, debug)
-        result = sysbench.sanity_check(db)
-        utility_cmd.check_testcase(result, "Sysbench run sanity check")
-        result = sysbench.sysbench_load(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS, SYSBENCH_LOAD_TEST_TABLE_SIZE)
-        utility_cmd.check_testcase(result, "Sysbench data load (threads : " + str(SYSBENCH_THREADS) + ")")
+        sysbench = sysbench_run.SysbenchRun(self.node1, debug)
+        sysbench.test_sanity_check(db)
+        sysbench.test_sysbench_load(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS, SYSBENCH_LOAD_TEST_TABLE_SIZE)
         sysbench.sysbench_ts_encryption(db, SYSBENCH_THREADS)
 
     def encryption_qa(self):
         # Encryption QA
         # Create data insert procedure
-        rqg_dataload = rqg_datagen.RQGDataGen(BASEDIR, WORKDIR, USER, debug)
 
-        encryption_tmp_ts = ['innodb_temp_tablespace_encrypt=ON', 'innodb_temp_tablespace_encrypt=OFF']
-        encryption_bin_log = ['binlog_encryption=ON', 'binlog_encryption=OFF']
-        encryption_default_tbl = ['default_table_encryption=ON', 'default_table_encryption=OFF']
-        encryption_redo_log = ['innodb_redo_log_encrypt=ON', 'innodb_redo_log_encrypt=OFF']
-        encryption_undo_log = ['innodb_undo_log_encrypt=ON', 'innodb_undo_log_encrypt=OFF']
-        encryption_sys_ts = ['innodb_sys_tablespace_encrypt=ON', 'innodb_sys_tablespace_encrypt=OFF']
+        option_values = ['ON', 'OFF']
 
-        for encryption_tmp_ts_value, encryption_bin_log_value, encryption_default_tbl_value, \
-            encryption_redo_log_value, encryption_undo_log_value, encryption_sys_ts_value in \
-            itertools.product(encryption_tmp_ts, encryption_bin_log, encryption_default_tbl,
-                              encryption_redo_log, encryption_undo_log, encryption_sys_ts):
-            encryption_combination = encryption_tmp_ts_value + " " + encryption_bin_log_value + \
-                                     " " + encryption_default_tbl_value + " " + encryption_redo_log_value + \
-                                     " " + encryption_undo_log_value + " " + encryption_sys_ts_value
-            utility_cmd.check_testcase(0, "Encryption options : " + encryption_combination)
+        loop_num = 0
+        for val1, val2, val3, val4, val5, val6 in \
+                itertools.product(option_values, repeat=6):
             # Start PXC cluster for encryption test
-            dbconnection_check = db_connection.DbConnection(USER, WORKDIR + '/node1/mysql.sock')
-            server_startup = pxc_startup.StartCluster(parent_dir, WORKDIR, BASEDIR, int(NODE), debug)
-            result = server_startup.sanity_check()
-            utility_cmd.check_testcase(result, "Startup sanity check")
-            result = server_startup.create_config('encryption')
-            utility_cmd.check_testcase(result, "Configuration file creation")
-            cnf_name = open(WORKDIR + '/conf/random_encryption.cnf', 'w+')
-            cnf_name.write('[mysqld]\n')
-            cnf_name.write("early-plugin-load=keyring_file.so" + '\n')
-            cnf_name.write("keyring_file_data=keyring" + '\n')
-            cnf_name.write(encryption_tmp_ts_value + '\n')
-            cnf_name.write(encryption_bin_log_value + '\n')
-            cnf_name.write(encryption_default_tbl_value + '\n')
-            cnf_name.write(encryption_redo_log_value + '\n')
-            cnf_name.write(encryption_undo_log_value + '\n')
-            cnf_name.write(encryption_sys_ts_value + '\n')
-            cnf_name.close()
-            for i in range(1, int(NODE) + 1):
-                os.system("sed -i 's#pxc_encrypt_cluster_traffic = OFF#pxc_encrypt_cluster_traffic = ON#g' " +
-                          WORKDIR + '/conf/node' + str(i) + '.cnf')
-                n_name = open(WORKDIR + '/conf/node' + str(i) + '.cnf', 'a+')
-                n_name.write('!include ' + WORKDIR + '/conf/random_encryption.cnf\n')
-                n_name.close()
+            server_startup = pxc_startup.StartCluster(self.get_number_of_nodes(), debug)
+            server_startup.sanity_check()
 
-            if encryption_sys_ts_value == "innodb_sys_tablespace_encrypt=ON":
-                init_extra = "--innodb_sys_tablespace_encrypt=ON " \
-                             "--early-plugin-load=keyring_file.so " \
-                             " --keyring_file_data=keyring"
-                result = server_startup.initialize_cluster(init_extra)
+            options = {"default_table_encryption": val1,
+                       "innodb_temp_tablespace_encrypt": val2,
+                       "innodb_sys_tablespace_encrypt": val3,
+                       "innodb_redo_log_encrypt": val4,
+                       "innodb_undo_log_encrypt": val5,
+                       "binlog_encryption": val6,
+                       "early-plugin-load": "keyring_file.so",
+                       "keyring_file_data": "keyring",
+                       "encrypt_tmp_files": "ON"}
+
+            server_startup.create_config('encryption', custom_conf_settings=options,
+                                         default_encryption_conf=False)
+
+            if options['innodb_sys_tablespace_encrypt'] == 'ON':
+                init_extra = ("--innodb_sys_tablespace_encrypt=ON --early-plugin-load=keyring_file.so "
+                              "--keyring_file_data=keyring")
+                server_startup.initialize_cluster(init_extra)
 
             else:
-                result = server_startup.initialize_cluster()
-            utility_cmd.check_testcase(result, "Initializing cluster")
-            result = server_startup.start_cluster()
-            utility_cmd.check_testcase(result, "Cluster startup")
-            result = dbconnection_check.connection_check()
-            utility_cmd.check_testcase(result, "Database connection")
-            self.sysbench_run(WORKDIR + '/node1/mysql.sock', 'test')
-            rqg_dataload.pxc_dataload(WORKDIR + '/node1/mysql.sock')
+                server_startup.initialize_cluster()
+            self.pxc_nodes = server_startup.start_cluster()
+            self.node1 = self.pxc_nodes[0]
+            self.node2 = self.pxc_nodes[1]
+            self.node1.test_connection_check()
+            self.sysbench_run()
+            rqg_dataload = rqg_datagen.RQGDataGen(self.node1, debug)
+            rqg_dataload.pxc_dataload(workdir)
             # Add prepared statement SQLs
-            create_ps = BASEDIR + "/bin/mysql --user=root --socket=" + \
-                WORKDIR + '/node1/mysql.sock' + ' < ' + parent_dir + \
-                '/util/prepared_statements.sql > /dev/null 2>&1'
-            if debug == 'YES':
-                print(create_ps)
-            result = os.system(create_ps)
-            utility_cmd.check_testcase(result, "Creating prepared statements")
+            self.node1.execute_queries_from_file(parent_dir + '/util/prepared_statements.sql')
             # Random data load
-            if os.path.isfile(parent_dir + '/util/createsql.py'):
-                generate_sql = createsql.GenerateSQL('/tmp/dataload.sql', 1000)
-                generate_sql.OutFile()
-                generate_sql.CreateTable()
+            if os.path.isfile(parent_dir + '/util/executesql.py'):
+                execute_sql = executesql.GenerateSQL(self.node1, db, 1000)
+                execute_sql.create_table()
                 sys.stdout = sys.__stdout__
-                data_load_query = BASEDIR + "/bin/mysql --user=root --socket=" + \
-                    WORKDIR + '/node1/mysql.sock' + ' test -f <  /tmp/dataload.sql >/dev/null 2>&1'
-                if debug == 'YES':
-                    print(data_load_query)
-                result = os.system(data_load_query)
-                utility_cmd.check_testcase(result, "Sample data load")
 
             # Checksum for tables in test DB for 8.0.
-            version = utility_cmd.version_check(BASEDIR)
             if int(version) >= int("080000"):
-                result = utility_cmd.check_table_count(BASEDIR, 'test', WORKDIR + '/node1/mysql.sock',
-                                                                    WORKDIR + '/node2/mysql.sock')
-                utility_cmd.check_testcase(result, "Checksum run for DB: test")
+                utility_cmd.test_table_count(self.node1, self.node2, db)
 
-            utility_cmd.stop_pxc(WORKDIR, BASEDIR, NODE)
+            self.shutdown_nodes()
+            loop_num += 1
+            if loop_num == 6:
+                print("Successfully tested six combinations")
+                break
 
 
-print("-----------------------")
-print("PXC Encryption test")
-print("-----------------------")
+utility.test_header("PXC Encryption test")
 encryption_test = EncryptionTest()
 encryption_test.encryption_qa()

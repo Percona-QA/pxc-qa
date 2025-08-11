@@ -1,12 +1,5 @@
--- create test database for prepared statement
--- -------------------------------------------
-DROP DATABASE IF EXISTS pstest; CREATE DATABASE pstest;
-use pstest;
-
--- prepared statement for table creation
-DELIMITER $$
-DROP PROCEDURE IF EXISTS PS_CREATE $$
-CREATE PROCEDURE PS_CREATE()    BEGIN
+DROP DATABASE IF EXISTS pstest; CREATE DATABASE pstest $$
+CREATE PROCEDURE pstest.PS_CREATE()    BEGIN
   DECLARE a INT Default 1 ;
     WHILE a <= 10 DO
           SET @tbl = concat("tbl",a);
@@ -15,15 +8,9 @@ CREATE PROCEDURE PS_CREATE()    BEGIN
       EXECUTE stmt1;
       SET a=a+1;
    END WHILE;
-END $$
-DELIMITER ;
-
-CALL PS_CREATE();
-
--- prepared statement for index creation
-DELIMITER $$
-DROP PROCEDURE IF EXISTS PS_INDEX $$
-CREATE PROCEDURE PS_INDEX()    BEGIN
+END$$
+CALL pstest.PS_CREATE()$$
+CREATE PROCEDURE pstest.PS_INDEX()    BEGIN
   DECLARE a INT Default 1 ;
     WHILE a <= 10 DO
           SET @tbl = concat("tbl",a);
@@ -33,14 +20,8 @@ CREATE PROCEDURE PS_INDEX()    BEGIN
       SET a=a+1;
    END WHILE;
 END $$
-DELIMITER ;
-
-CALL PS_INDEX();
-
--- prepared statement for insert operation
-DELIMITER $$
-DROP PROCEDURE IF EXISTS PS_INSERT $$
-CREATE PROCEDURE PS_INSERT() BEGIN
+CALL pstest.PS_INDEX();$$
+CREATE PROCEDURE pstest.PS_INSERT() BEGIN
   DECLARE create_start  INT DEFAULT 1;
   DECLARE insert_start INT DEFAULT 1;
   DECLARE create_count  INT DEFAULT 10;
@@ -58,31 +39,19 @@ CREATE PROCEDURE PS_INSERT() BEGIN
           SET insert_start = 1;
     END WHILE;
 END $$
-DELIMITER ;
-
-CALL PS_INSERT();
-
--- prepared statement for delete operation
-DELIMITER $$
-DROP PROCEDURE IF EXISTS PS_DELETE $$
-CREATE PROCEDURE PS_DELETE()    BEGIN
+CALL pstest.PS_INSERT();$$
+CREATE PROCEDURE pstest.PS_DELETE(IN row_count INT)    BEGIN
   DECLARE a INT Default 1 ;
     WHILE a <= 10 DO
           SET @tbl = concat("tbl",a);
-      SET @s = concat("DELETE FROM ",@tbl ," ORDER BY RAND() LIMIT 45");
+      SET @s = concat("DELETE FROM ",@tbl ," ORDER BY RAND() LIMIT ",row_count);
           PREPARE stmt1 FROM @s;
       EXECUTE stmt1;
       SET a=a+1;
    END WHILE;
 END $$
-DELIMITER ;
-
-CALL PS_DELETE();
-
--- prepared statement for analyze table
-DELIMITER $$
-DROP PROCEDURE IF EXISTS PS_ANALYZE $$
-CREATE PROCEDURE PS_ANALYZE()    BEGIN
+CALL pstest.PS_DELETE(45) $$
+CREATE PROCEDURE pstest.PS_ANALYZE()    BEGIN
   DECLARE a INT Default 1 ;
     WHILE a <= 10 DO
           SET @tbl = concat("tbl",a);
@@ -92,31 +61,9 @@ CREATE PROCEDURE PS_ANALYZE()    BEGIN
       SET a=a+1;
    END WHILE;
 END $$
-DELIMITER ;
-
-CALL PS_ANALYZE();
-
--- prepared statement for delete operation
-DELIMITER $$
-DROP PROCEDURE IF EXISTS PS_DELETE $$
-CREATE PROCEDURE PS_DELETE()    BEGIN
-  DECLARE a INT Default 1 ;
-    WHILE a <= 10 DO
-          SET @tbl = concat("tbl",a);
-      SET @s = concat("DELETE FROM ",@tbl ," ORDER BY RAND() LIMIT 35");
-          PREPARE stmt1 FROM @s;
-      EXECUTE stmt1;
-      SET a=a+1;
-   END WHILE;
-END $$
-DELIMITER ;
-
-CALL PS_DELETE();
-
--- prepared statement for optimize table
-DELIMITER $$
-DROP PROCEDURE IF EXISTS PS_OPT_TABLE $$
-CREATE PROCEDURE PS_OPT_TABLE()    BEGIN
+CALL pstest.PS_ANALYZE()$$
+CALL pstest.PS_DELETE(35)$$
+CREATE PROCEDURE pstest.PS_OPT_TABLE()    BEGIN
   DECLARE a INT Default 1 ;
     WHILE a <= 10 DO
           SET @tbl = concat("tbl",a);
@@ -126,14 +73,8 @@ CREATE PROCEDURE PS_OPT_TABLE()    BEGIN
       SET a=a+1;
    END WHILE;
 END $$
-DELIMITER ;
-
-CALL PS_OPT_TABLE();
-
--- prepared statement for update operation
-DELIMITER $$
-DROP PROCEDURE IF EXISTS PS_UPDATE $$
-CREATE PROCEDURE PS_UPDATE()    BEGIN
+CALL pstest.PS_OPT_TABLE()$$
+CREATE PROCEDURE pstest.PS_UPDATE()    BEGIN
   DECLARE create_start  INT DEFAULT 1;
   DECLARE update_start INT DEFAULT 1;
   DECLARE create_count  INT DEFAULT 10;
@@ -151,14 +92,8 @@ CREATE PROCEDURE PS_UPDATE()    BEGIN
           SET update_start = 1;
     END WHILE;
 END $$
-DELIMITER ;
-
-CALL PS_UPDATE();
-
--- prepared statement for repair table
-DELIMITER $$
-DROP PROCEDURE IF EXISTS PS_RPR_TABLE $$
-CREATE PROCEDURE PS_RPR_TABLE()    BEGIN
+CALL pstest.PS_UPDATE() $$
+CREATE PROCEDURE pstest.PS_RPR_TABLE()    BEGIN
   DECLARE a INT Default 1 ;
     WHILE a <= 10 DO
           SET @tbl = concat("tbl",a);
@@ -168,14 +103,8 @@ CREATE PROCEDURE PS_RPR_TABLE()    BEGIN
       SET a=a+1;
    END WHILE;
 END $$
-DELIMITER ;
-
-CALL PS_RPR_TABLE();
-
--- prepared statement for drop index
-DELIMITER $$
-DROP PROCEDURE IF EXISTS PS_DROP_INDEX $$
-CREATE PROCEDURE PS_DROP_INDEX()    BEGIN
+CALL pstest.PS_RPR_TABLE()$$
+CREATE PROCEDURE pstest.PS_DROP_INDEX()    BEGIN
   DECLARE a INT Default 1 ;
     WHILE a <= 10 DO
           SET @tbl = concat("tbl",a);
@@ -185,14 +114,8 @@ CREATE PROCEDURE PS_DROP_INDEX()    BEGIN
       SET a=a+1;
    END WHILE;
 END $$
-DELIMITER ;
-
-CALL PS_DROP_INDEX();
-
--- prepared statement for truncate table
-DELIMITER $$
-DROP PROCEDURE IF EXISTS PS_TRUNCATE $$
-CREATE PROCEDURE PS_TRUNCATE()    BEGIN
+CALL pstest.PS_DROP_INDEX() $$
+CREATE PROCEDURE pstest.PS_TRUNCATE()    BEGIN
   DECLARE a INT Default 1 ;
     WHILE a <= 10 DO
           SET @tbl = concat("tbl",a);
@@ -202,14 +125,8 @@ CREATE PROCEDURE PS_TRUNCATE()    BEGIN
       SET a=a+1;
    END WHILE;
 END $$
-DELIMITER ;
-
-CALL PS_TRUNCATE();
-
--- prepared statement for drop table
-DELIMITER $$
-DROP PROCEDURE IF EXISTS PS_DROP_TABLE $$
-CREATE PROCEDURE PS_DROP_TABLE()    BEGIN
+CALL pstest.PS_TRUNCATE()$$
+CREATE PROCEDURE pstest.PS_DROP_TABLE()    BEGIN
   DECLARE a INT Default 1 ;
     WHILE a <= 10 DO
           SET @tbl = concat("tbl",a);
@@ -219,26 +136,21 @@ CREATE PROCEDURE PS_DROP_TABLE()    BEGIN
       SET a=a+1;
    END WHILE;
 END $$
-DELIMITER ;
-
-CALL PS_DROP_TABLE();
-
--- prepared statement for create user
-DELIMITER $$
-DROP PROCEDURE IF EXISTS PS_CREATE_USER $$
-CREATE PROCEDURE PS_CREATE_USER()    BEGIN
+CALL pstest.PS_DROP_TABLE()$$
+CREATE PROCEDURE pstest.PS_CREATE_USER()    BEGIN
   DECLARE a INT Default 1 ;
     WHILE a <= 10 DO
           SET @tuser = concat("testuser",a);
+      SET @c = concat("DROP USER IF EXISTS ",@tuser,"@'%'");
       SET @s = concat("CREATE USER ",@tuser,"@'%' IDENTIFIED BY 'test123'");
       SET @t = concat("GRANT ALL ON *.* TO ",@tuser,"@'%'");
-          PREPARE stmt1 FROM @s;
-          PREPARE stmt2 FROM @t;
+          PREPARE stmt1 FROM @c;
+          PREPARE stmt2 FROM @s;
+          PREPARE stmt3 FROM @t;
       EXECUTE stmt1;
       EXECUTE stmt2;
+      EXECUTE stmt3;
       SET a=a+1;
    END WHILE;
 END $$
-DELIMITER ;
-
-CALL PS_CREATE_USER();
+CALL pstest.PS_CREATE_USER()$$

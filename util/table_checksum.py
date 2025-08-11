@@ -1,130 +1,80 @@
 import os
+
 from util import utility
+from util.db_connection import DbConnection
 
 
 class TableChecksum:
-    def __init__(self, pt_basedir, basedir, workdir, node, socket, debug):
-        self.pt_basedir = pt_basedir
-        self.basedir = basedir
-        self.workdir = workdir
-        self.node = node
-        self.socket = socket
-        self.debug = debug
-        self.utility_cmd = utility.Utility(debug)
+    def __init__(self, node: DbConnection, workdir, pt_basedir, debug):
+        self.__workdir = workdir
+        self.__pt_basedir = pt_basedir
+        self.__node = node
+        self.__debug = debug
+        self.__utility_cmd = utility.Utility(debug)
 
-    def run_query(self, query):
-        query_status = os.system(query)
-        if int(query_status) != 0:
-            print("ERROR! Query execution failed: " + query)
-            return 1
-        return 0
-
-    def sanity_check(self):
+    def sanity_check(self, nodes: list[DbConnection]):
         """ Sanity check method will check
             the availability of pt-table-checksum
             binary file.
         """
-        if not os.path.isfile(self.pt_basedir + '/bin/pt-table-checksum'):
+        if not os.path.isfile(self.__pt_basedir + '/bin/pt-table-checksum'):
             print('pt-table-checksum is missing in percona toolkit basedir')
             return 1
 
-        version = self.utility_cmd.version_check(self.basedir)
+        version = self.__utility_cmd.version_check(self.__node.get_socket())
+
+        queries = ["create user if not exists pt_user@'localhost' identified by 'test'",
+                   "grant all on *.* to pt_user@'localhost'"]
+
         # Creating pt_user for database consistency check
         if int(version) < int("050700"):
-            query = self.basedir + "/bin/mysql --user=root --socket=" + \
-                self.socket + ' -e"create user ' \
-                " pt_user@'localhost' identified by 'test';" \
-                "grant all on *.* to pt_user@'localhost'" \
-                ';" > /dev/null 2>&1'
-        else:
-            query = self.basedir + "/bin/mysql --user=root --socket=" + \
-                self.socket + ' -e"create user if not exists' \
-                " pt_user@'localhost' identified with " \
-                " mysql_native_password by 'test';" \
-                "grant all on *.* to pt_user@'localhost'" \
-                ';" > /dev/null 2>&1'
-        self.run_query(query)
+            queries[0] = "create user pt_user@'localhost' identified by 'test'"
+        self.__node.execute_queries(queries)
+
+        queries = ["drop database if exists percona",
+                   "create database percona",
+                   "create table percona.dsns(id int, parent_id int, dsn varchar(100), primary key(id))"]
         # Creating percona db for cluster data checksum
-        query = self.basedir + "/bin/mysql --user=root --socket=" + \
-            self.socket + ' -e"drop database if exists percona;' \
-            'create database percona;' \
-            'drop table if exists percona.dsns;' \
-            'create table percona.dsns(id int,' \
-            'parent_id int,dsn varchar(100), ' \
-            'primary key(id));" > /dev/null 2>&1'
-        self.run_query(query)
+        self.__node.execute_queries(queries)
 
-        for i in range(1, int(self.node) + 1):
-            port = self.basedir + "/bin/mysql --user=root " + \
-                '--socket=' + self.workdir + '/node' + str(i) + '/mysql.sock' + \
-                ' -Bse"select @@port" 2>&1'
-            port = os.popen(port).read().rstrip()
-
-            insert_query = self.basedir + "/bin/mysql --user=root " + \
-                '--socket=' + self.socket + \
-                ' -e"insert into percona.dsns (id,dsn) values (' + \
-                str(i) + ",'h=127.0.0.1,P=" + str(port) + \
-                ",u=pt_user,p=test');" \
-                '"> /dev/null 2>&1'
-            self.run_query(insert_query)
+        for node in nodes:
+            self.__node.execute('insert into percona.dsns (id,dsn) values (' + str(node.get_port()) + ",'h=127.0.0.1,P="
+                                + str(node.get_port()) + ",u=pt_user,p=test')")
         return 0
 
     def error_status(self, error_code):
         # Checking pt-table-checksum error
+        error_map = {'1': ": A non-fatal error occurred", '2': ": --pid file exists and the PID is running",
+                     '4': ": Caught SIGHUP, SIGINT, SIGPIPE, or SIGTERM",
+                     '8': ": No replicas or cluster nodes were found", '16': ": At least one diff was found",
+                     '32': ": At least one chunk was skipped", '64': ": At least one table was skipped", }
         if error_code == "0":
-            self.utility_cmd.check_testcase(0, "pt-table-checksum run status")
-        elif error_code == "1":
-            self.utility_cmd.check_testcase(1, "pt-table-checksum error code "
-                                          ": A non-fatal error occurred")
-        elif error_code == "2":
-            self.utility_cmd.check_testcase(1, "pt-table-checksum error code "
-                                          ": --pid file exists and the PID is running")
-        elif error_code == "4":
-            self.utility_cmd.check_testcase(1, "pt-table-checksum error code "
-                                          ": Caught SIGHUP, SIGINT, SIGPIPE, or SIGTERM")
-        elif error_code == "8":
-            self.utility_cmd.check_testcase(1, "pt-table-checksum error code "
-                                          ": No replicas or cluster nodes were found")
-        elif error_code == "16":
-            self.utility_cmd.check_testcase(1, "pt-table-checksum error code "
-                                          ": At least one diff was found")
-        elif error_code == "32":
-            self.utility_cmd.check_testcase(1, "pt-table-checksum error code "
-                                          ": At least one chunk was skipped")
-        elif error_code == "64":
-            self.utility_cmd.check_testcase(1, "pt-table-checksum error code "
-                                          ": At least one table was skipped")
+            self.__utility_cmd.check_testcase(0, "pt-table-checksum run status")
         else:
-            self.utility_cmd.check_testcase(1, "pt-table-checksum error code "
-                                          ": Fatal error occurred. Please"
-                                          "check error log for more info")
+            msg = error_map.get(error_code)
+            if msg is None:
+                msg = ": Fatal error occurred. Please check error log for more info"
+
+            self.__utility_cmd.check_testcase(1, "pt-table-checksum error code " + msg)
 
     def data_consistency(self, database):
         """ Data consistency check
             method will compare the
             data between cluster nodes
         """
-        port = self.basedir + "/bin/mysql --user=root --socket=" + \
-            self.socket + ' -Bse"select @@port" 2>&1'
-        port = os.popen(port).read().rstrip()
-        version = self.utility_cmd.version_check(self.basedir)
+        port = self.__node.execute_get_value("select @@port")
+        version = self.__utility_cmd.version_check(self.__node.get_base_dir())
         # Disable pxc_strict_mode for pt-table-checksum run
         if int(version) > int("050700"):
-            query = self.basedir + "/bin/mysql --user=root --socket=" + \
-                self.socket + ' -e"set global pxc_strict_mode=DISABLED;' \
-                '" > /dev/null 2>&1'
-            self.run_query(query)
+            self.__node.execute("set global pxc_strict_mode=DISABLED")
 
-        run_checksum = self.pt_basedir + "/bin/pt-table-checksum h=127.0.0.1,P=" + \
-            str(port) + ",u=pt_user,p=test -d" + database + \
-            " --recursion-method dsn=h=127.0.0.1,P=" + str(port) + \
-            ",u=pt_user,p=test,D=percona,t=dsns >" + self.workdir + "/log/pt-table-checksum.log 2>&1; echo $?"
+        run_checksum = self.__pt_basedir + "/bin/pt-table-checksum h=127.0.0.1,P=" + \
+                       str(port) + ",u=pt_user,p=test -d" + database + \
+                       " --recursion-method dsn=h=127.0.0.1,P=" + str(port) + \
+                       ",u=pt_user,p=test,D=percona,t=dsns >" + self.__workdir + "/log/pt-table-checksum.log 2>&1; echo $?"
         checksum_status = os.popen(run_checksum).read().rstrip()
         self.error_status(checksum_status)
         if int(version) > int("050700"):
             # Enable pxc_strict_mode after pt-table-checksum run
-            query = self.basedir + "/bin/mysql --user=root --socket=" + \
-                self.socket + ' -e"set global pxc_strict_mode=ENFORCING;' \
-                '" > /dev/null 2>&1'
-            self.run_query(query)
+            self.__node.execute("set global pxc_strict_mode=ENFORCING")
         return 0

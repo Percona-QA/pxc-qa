@@ -1,6 +1,4 @@
-DROP PROCEDURE IF EXISTS sr_procedure;
-DELIMITER //
-CREATE PROCEDURE sr_procedure (IN row_count int(10), IN fragment_unit varchar(50), IN fragment_size int(10))
+CREATE PROCEDURE test.sr_procedure (IN row_count int(10), IN fragment_unit varchar(50), IN fragment_size int(10))
 BEGIN
     DECLARE trx_statementsVar INT ;
     DECLARE trx_fragmentVar INT ;
@@ -28,5 +26,4 @@ BEGIN
         END IF;
     END IF;
     COMMIT;
-END //
-DELIMITER ;
+END

@@ -1,6 +1,6 @@
 import random
 from util import datagen
-import sys
+from util import db_connection
 
 # data_type List
 data_type = ['int', 'bigint', 'char', 'varchar', 'date', 'float', 'double', 'text', 'time', 'timestamp']
@@ -24,15 +24,13 @@ def opt_selection(myextra):
 
 
 class GenerateSQL:
-    def __init__(self, filename, lines):
-        self.filename = "/tmp/" + filename
+    def __init__(self, node: db_connection.DbConnection, db, lines):
+        self.node = node
+        self.db = db
         self.lines = lines
         self.table_count = random.randint(1, len(table_names))
         self.column_count = random.randint(1, len(column_names))
         self.insert_sql_count = int(((self.lines / self.table_count) - 1))
-        
-    def out_file(self):
-        sys.stdout = open(self.filename, "w")
 
     def create_table(self):
         # Create table with random data.
@@ -50,21 +48,26 @@ class GenerateSQL:
                 if column_description == "char":
                     column_description = column_description + " (1)"
                 if column_description == "varchar":
+                    if j == 0:
+                        varchar_count.remove(1024)
                     column_description = column_description + " (" + format(random.choice(varchar_count)) + ")"
+                    if j == 0:
+                        varchar_count.append(1024)
                 if column_description == "timestamp":
                     column_description = column_description + " DEFAULT CURRENT_TIMESTAMP "
                 data_types += column_names[j] + " " + column_description + ", "
-            print("CREATE TABLE IF NOT EXISTS " + table_name + "( " + data_types + 
-                  " primary key (c1" + index_length + ") );")
+            self.node.execute("CREATE TABLE IF NOT EXISTS " + self.db + "." + table_name + "( " + data_types +
+                              " primary key (c1" + index_length + ") );")
             for j in range(self.insert_sql_count):
                 data_value = ""
                 for column_description in typearray:
                     text = datagen.DataGenerator(column_description)
                     data_value += "'" + text.getData() + "', "
                 data_value = data_value[:-2]
-                print("INSERT INTO " + table_name + " values (" + data_value + ");")
+                self.node.execute("INSERT INTO " + self.db + "." + table_name + " values (" + data_value + ");",
+                                  log_query=False)
 
     def drop_table(self):
         for i in range(self.table_count):
             table_name = table_names[i]
-            print("DROP TABLE IF EXISTS " + table_name + ";")
+            self.node.execute("DROP TABLE IF EXISTS " + self.db + "." + table_name + ";", log_query=False)

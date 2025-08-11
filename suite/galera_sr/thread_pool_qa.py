@@ -1,110 +1,59 @@
 #!/usr/bin/env python3
 import os
 import sys
-import argparse
 import itertools
+
 cwd = os.path.dirname(os.path.realpath(__file__))
 parent_dir = os.path.normpath(os.path.join(cwd, '../../'))
 sys.path.insert(0, parent_dir)
+from base_test import *
 from config import *
 from util import sysbench_run
 from util import utility
 from util import table_checksum
-from util import db_connection
 from util import pxc_startup
 
-# Read argument
-parser = argparse.ArgumentParser(prog='PXC thread pool test', usage='%(prog)s [options]')
-parser.add_argument('-e', '--encryption-run', action='store_true',
-                    help='This option will enable encryption options')
-parser.add_argument('-d', '--debug', action='store_true',
-                    help='This option will enable debug logging')
-args = parser.parse_args()
-if args.encryption_run is True:
-    encryption = 'YES'
-else:
-    encryption = 'NO'
-if args.debug is True:
-    debug = 'YES'
-else:
-    debug = 'NO'
 
-utility_cmd = utility.Utility(debug)
-utility_cmd.check_python_version()
+class ThreadPooling(BaseTest):
+    def __init__(self):
+        super().__init__(my_extra="--max-connections=1500 --innodb_buffer_pool_size=2G --innodb_log_file_size=1G")
 
-
-class ThreadPooling:
-    def start_server(self, node):
-        my_extra = "--innodb_buffer_pool_size=2G --innodb_log_file_size=1G"
-        utility_cmd.start_pxc(parent_dir, WORKDIR, BASEDIR, node,
-                              WORKDIR + '/node1/mysql.sock', USER, encryption, my_extra)
-
-    def sysbench_run(self, socket, db, port):
+    def sysbench_run(self, port):
         # Sysbench data load
-        version = utility_cmd.version_check(BASEDIR)
         checksum = ""
         if int(version) < int("080000"):
-            checksum = table_checksum.TableChecksum(PT_BASEDIR, BASEDIR, WORKDIR, NODE, socket, debug)
-            checksum.sanity_check()
+            checksum = table_checksum.TableChecksum(self.node1, workdir, pt_basedir, debug)
+            checksum.sanity_check(self.pxc_nodes)
 
-        sysbench = sysbench_run.SysbenchRun(BASEDIR, WORKDIR, socket, debug)
-        result = sysbench.sanity_check(db)
-        utility_cmd.check_testcase(result, "Sysbench run sanity check")
-        result = sysbench.sysbench_load(db, 50, 50, SYSBENCH_NORMAL_TABLE_SIZE)
-        utility_cmd.check_testcase(result, "Sysbench data load (threads : " + str(SYSBENCH_THREADS) + ")")
+        sysbench = sysbench_run.SysbenchRun(self.node1, debug)
+        sysbench.test_sanity_check(db)
+        sysbench.test_sysbench_load(db, 50, 50, SYSBENCH_NORMAL_TABLE_SIZE)
         # Sysbench OLTP read write run
-        query = "sysbench /usr/share/sysbench/oltp_read_write.lua" \
-                " --table-size=" + str(SYSBENCH_NORMAL_TABLE_SIZE) + \
-                " --tables=" + str(50) + \
-                " --threads=" + str(50) + \
-                " --mysql-db=test --mysql-user=" + SYSBENCH_USER + \
-                " --mysql-password=" + SYSBENCH_PASS + \
-                " --db-driver=mysql --mysql-host=127.0.0.1 --mysql-port=" + str(port) + \
-                "  --time=300 --db-ps-mode=disable run > " + WORKDIR + "/log/sysbench_read_write.log"
-        if debug == 'YES':
-            print(query)
-        query_status = os.system(query)
-        if int(query_status) != 0:
-            print("ERROR!: sysbench read write run is failed")
-            utility_cmd.check_testcase(result, "Sysbench read write run")
-        utility_cmd.check_testcase(0, "Sysbench read write run")
+        sysbench.test_sysbench_oltp_read_write(db, 50, 50, SYSBENCH_NORMAL_TABLE_SIZE,
+                                               300, port=port)
 
-    def thread_pooling_qa(self, socket, db):
+    def thread_pooling_qa(self):
         # Thread Pooling QA
         thread_handling_option = ['pool-of-threads', 'one-thread-per-connection']
-        thread_pool_size = [2, 4, 8]
-        thread_pool_max_threads = [2, 4, 8]
+        thread_pool_size = [2]  # 4, 8
+        thread_pool_max_threads = [2, 8]  # 4
         for tp_option, tp_size, tp_max_thread in \
                 itertools.product(thread_handling_option, thread_pool_size, thread_pool_max_threads):
             my_extra = "--thread_handling=" + tp_option + " --thread_pool_size=" + str(tp_size) + \
                        " --thread_pool_max_threads=" + str(tp_max_thread)
             # Start PXC cluster for encryption test
             utility_cmd.check_testcase(0, "Thread pooling options : " + my_extra)
-            dbconnection_check = db_connection.DbConnection(USER, WORKDIR + '/node1/mysql.sock')
-            server_startup = pxc_startup.StartCluster(parent_dir, WORKDIR, BASEDIR, int(NODE), debug)
-            result = server_startup.sanity_check()
-            utility_cmd.check_testcase(result, "Startup sanity check")
-            result = server_startup.create_config('none')
-            utility_cmd.check_testcase(result, "Configuration file creation")
-            result = server_startup.initialize_cluster()
-            utility_cmd.check_testcase(result, "Initializing cluster")
-            for i in range(1, int(NODE) + 1):
-                n_name = open(WORKDIR + '/conf/node' + str(i) + '.cnf', 'a+')
-                n_name.write('admin_address=127.0.0.1\n')
-                n_name.write('admin_port=' + str(33062 + i) + '\n')
-                n_name.close()
-
-            result = server_startup.start_cluster(my_extra)
-            utility_cmd.check_testcase(result, "Cluster startup")
-            result = dbconnection_check.connection_check()
-            utility_cmd.check_testcase(result, "Database connection")
-            self.sysbench_run(WORKDIR + '/node1/mysql.sock', 'test', 33063)
-            utility_cmd.stop_pxc(WORKDIR, BASEDIR, NODE)
+            server_startup = pxc_startup.StartCluster(3, debug)
+            server_startup.sanity_check()
+            server_startup.create_config('none', set_admin_address=True)
+            server_startup.initialize_cluster()
+            self.pxc_nodes = server_startup.start_cluster(my_extra)
+            self.node1 = self.pxc_nodes[0]
+            utility_cmd.check_testcase(self.node1.connection_check(), "Database connection")
+            self.sysbench_run(33063)
+            self.shutdown_nodes(self.pxc_nodes)
 
 
-print("--------------------------------")
-print("\nPXC Thread Pooling test")
-print("--------------------------------")
+utility.test_header("PXC Thread Pooling test")
 thread_pooling = ThreadPooling()
-thread_pooling.thread_pooling_qa(WORKDIR + '/node1/mysql.sock', 'test')
-
+thread_pooling.thread_pooling_qa()

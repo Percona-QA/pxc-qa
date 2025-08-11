@@ -47,10 +47,9 @@ else:
     LINE_COUNT = lines
 
 # Generate random data
-OUTFILE = "/tmp/" + outfile
-generate_sql = createsql.GenerateSQL(OUTFILE, LINE_COUNT)
-generate_sql.OutFile()
-generate_sql.CreateTable()
-generate_sql.DropTable()
+generate_sql = createsql.GenerateSQL(outfile, LINE_COUNT)
+generate_sql.out_file()
+generate_sql.create_table()
+generate_sql.drop_table()
 sys.stdout = sys.__stdout__
-print("DONE! Generated " + OUTFILE)
+print("DONE! Generated " + outfile)
