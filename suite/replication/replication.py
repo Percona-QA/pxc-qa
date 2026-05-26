@@ -30,7 +30,7 @@ class SetupReplication(BaseTest):
 
         sysbench.test_sanity_check(test_db)
         sysbench.test_sysbench_load(test_db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS, SYSBENCH_NORMAL_TABLE_SIZE)
-        if encryption == 'YES':
+        if encryption:
             for i in range(1, int(SYSBENCH_TABLE_COUNT) + 1):
                 node.execute('alter table ' + test_db + '.sbtest' + str(i) + " encryption='Y'")
 

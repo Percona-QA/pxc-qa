@@ -3,6 +3,7 @@
 # Updated by Parveez Baig
 # This will help us to start Percona XtraDB Cluster, Upgrade cluster nodes, Backup the cluster nodes.
 
+import json
 import os
 import subprocess
 import random
@@ -19,6 +20,7 @@ from util.utility import Version, Utility
 workdir = WORKDIR
 base_dir = BASEDIR
 user = USER
+comp_name = 'component_keyring_file'
 
 higher_version_basedir = PXC_UPPER_BASE
 lower_base_dir = PXC_LOWER_BASE
@@ -66,6 +68,12 @@ def node_startup_script(node_number: int):
 
 def init_log(node_number: int):
     return workdir + '/log/init' + str(node_number) + '.log'
+
+
+def component_keyring_file_path(node_number: int):
+    keyring_dir = os.path.join(workdir, 'keyring')
+    os.makedirs(keyring_dir, exist_ok=True)
+    return os.path.join(keyring_dir, 'node' + str(node_number) + '_' + comp_name)
 
 
 def add_conf(option_values: dict):
@@ -135,6 +143,10 @@ class StartCluster:
             shutil.copy(default_custom_cnf, workdir_custom_cnf)
         if wsrep_extra == 'encryption' and default_encryption_conf:
             shutil.copy(encryption_cnf, workdir_encryption_cnf)
+            if int(version) < int("080024"):
+                with open(workdir_encryption_cnf, 'a+') as cnf_file:
+                    cnf_file.write('early-plugin-load = keyring_file.so\n')
+                    cnf_file.write('keyring_file_data = keyring\n')
         for i in range(1, self.__number_of_nodes + 1):
             cnf = node_conf(i)
             shutil.copy(default_pxc_cnf, cnf)
@@ -195,7 +207,7 @@ class StartCluster:
         utility_cmd = utility.Utility(self.__debug)
         utility_cmd.check_testcase(result, "PXC: Adding custom configuration")
 
-    def initialize_cluster(self, init_extra=None):
+    def initialize_cluster(self, init_extra=None, encryption=False):
         """ Method to initialize the cluster database
             directories. This will initialize the cluster
             using --initialize-insecure option for
@@ -229,6 +241,16 @@ class StartCluster:
                 print(initialize_node)
             run_query = subprocess.call(initialize_node, shell=True, stderr=subprocess.DEVNULL)
             result = ("{}".format(run_query))
+            if encryption:
+                if int(version) >= int("080024"):
+                    with open(os.path.join(datadir, 'mysqld.my'), 'w') as manifest_file:
+                        json.dump({"components": "file://" + comp_name}, manifest_file, indent=2)
+                        manifest_file.write('\n')
+
+                    with open(os.path.join(datadir, comp_name + '.cnf'), 'w') as cnf_file:
+                        json.dump({"path": component_keyring_file_path(i), "read_only": False}, cnf_file, indent=2)
+                        cnf_file.write('\n')
+
         utility_cmd = utility.Utility(self.__debug)
         utility_cmd.check_testcase(int(result), "Initializing cluster")
 
@@ -424,16 +446,20 @@ class StartCluster:
         node.execute_queries(queries)
 
     @staticmethod
-    def pxb_backup(node: DbConnection, encryption: str, copy_back_to_ps_node: bool = False, debug: str = 'NO'):
+    def pxb_backup(node: DbConnection, encryption: bool, copy_back_to_ps_node: bool = False, debug: str = 'NO'):
         """ This method will backup PXC/PS data directory
             with the help of xtrabackup.
         """
         # Enable keyring file plugin if it is encryption run
-        if encryption == 'YES':
-            backup_extra = " --keyring-file-data=" + node.get_data_dir() + \
+        backup_extra = ''
+        if encryption:
+            version_info = node.get_mysql_version()
+            version = "{:02d}{:02d}{:02d}".format(int(version_info.split('.')[0]),
+                                                  int(version_info.split('.')[1]),
+                                                  int(version_info.split('.')[2]))
+            if int(version) < int("080024"):
+                backup_extra = " --keyring-file-data=" + node.get_data_dir() + \
                            "/keyring --early-plugin-load='keyring_file=keyring_file.so'"
-        else:
-            backup_extra = ''
 
         # Backup data using xtrabackup
         backup_cmd = ("xtrabackup --user=xbuser --password='test' --backup --target-dir=" + backup_dir +
@@ -462,8 +488,15 @@ class StartCluster:
             os.system(copy_backup)
 
             # Copy keyring file to destination directory for encryption startup
-            if encryption == 'YES':
-                os.system("cp " + node.get_data_dir() + "/keyring " + dest_datadir)
+            if encryption:
+                if int(version) >= int("080024"):
+                    dest_keyring_file = os.path.join(workdir, 'keyring', 'psnode1_' + comp_name)
+                    shutil.copy(component_keyring_file_path(node.get_node_number()), dest_keyring_file)
+                    with open(os.path.join(dest_datadir, comp_name + '.cnf'), 'w') as cnf_file:
+                        json.dump({"path": dest_keyring_file, "read_only": False}, cnf_file, indent=2)
+                        cnf_file.write('\n')
+                else:
+                    os.system("cp " + node.get_data_dir() + "/keyring " + dest_datadir)
 
         if debug == 'YES':
             print("Backup dir path: ", backup_dir)

@@ -27,7 +27,7 @@ class PXCUpgrade(BaseTest):
         sysbench_node1.test_sanity_check(db)
         sysbench_node1.test_sysbench_load(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS, SYSBENCH_NORMAL_TABLE_SIZE)
         if int(low_version_num) > int("050700"):
-            if encryption == 'YES':
+            if encryption:
                 for i in range(1, int(SYSBENCH_TABLE_COUNT) + 1):
                     self.node1.execute('alter table ' + db + '.sbtest' + str(i) + " encryption='Y'")
 

@@ -25,7 +25,7 @@ class ConsistencyCheck(BaseTest):
 
         sysbench.test_sanity_check(db)
         sysbench.test_sysbench_load(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS, SYSBENCH_NORMAL_TABLE_SIZE)
-        if encryption == 'YES':
+        if encryption:
             sysbench.encrypt_sysbench_tables(db)
 
     def data_load(self, load_db):

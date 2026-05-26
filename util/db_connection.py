@@ -236,6 +236,9 @@ class DbConnection:
     def get_port(self):
         return self.execute_get_value("select @@port")
 
+    def get_mysql_version(self):
+        return self.execute_get_value("select @@version")
+
     def get_user(self):
         return self.__user
 
