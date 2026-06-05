@@ -18,11 +18,11 @@ class PXCUpgrade(BaseTest):
 
     def join_higher_version_node(self):
         # Start PXC cluster for upgrade test
-        self.pxc_nodes.append(pxc_startup.StartCluster.join_new_upgraded_node(self.node3, 4, debug))
+        self.pxc_nodes.append(pxc_startup.StartCluster.join_new_upgraded_node(self.node3, 4, debug, encryption=encryption))
 
     def sysbench_run(self, upgrade_type):
         # Sysbench dataload for consistency test
-        sysbench_node1 = sysbench_run.SysbenchRun(self.node1, debug)
+        sysbench_node1 = sysbench_run.SysbenchRun(self.node1, debug, workdir)
 
         sysbench_node1.test_sanity_check(db)
         sysbench_node1.test_sysbench_load(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS, SYSBENCH_NORMAL_TABLE_SIZE)
@@ -31,8 +31,8 @@ class PXCUpgrade(BaseTest):
                 for i in range(1, int(SYSBENCH_TABLE_COUNT) + 1):
                     self.node1.execute('alter table ' + db + '.sbtest' + str(i) + " encryption='Y'")
 
-        sysbench_node2 = sysbench_run.SysbenchRun(self.node2, debug)
-        sysbench_node3 = sysbench_run.SysbenchRun(self.node3, debug)
+        sysbench_node2 = sysbench_run.SysbenchRun(self.node2, debug, workdir)
+        sysbench_node3 = sysbench_run.SysbenchRun(self.node3, debug, workdir)
         if upgrade_type == 'readwrite' or upgrade_type == 'readwrite_sst':
             sysbench_node1.test_sysbench_oltp_read_write(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS,
                                                          SYSBENCH_NORMAL_TABLE_SIZE, 1000, True)
@@ -57,7 +57,7 @@ class PXCUpgrade(BaseTest):
         self.sysbench_run(upgrade_type)
         time.sleep(5)
         for node in [self.node3, self.node2, self.node1]:
-            sysbench_pid = utility.sysbech_node_pid(node.get_node_number())
+            sysbench_pid = utility.sysbench_pid(node)
             utility_cmd.kill_process(sysbench_pid, "sysbench run", True)
             if node == self.node3 and upgrade_type == 'readwrite_sst':
                 node_to_add_load = self.node1
@@ -69,7 +69,7 @@ class PXCUpgrade(BaseTest):
             else:
                 pxc_startup.StartCluster.upgrade_pxc_node(node, debug, node_to_add_load, cnf_replace)
         time.sleep(60)
-        sysbench_node = sysbench_run.SysbenchRun(self.node1, debug)
+        sysbench_node = sysbench_run.SysbenchRun(self.node1, debug, workdir)
         sysbench_node.test_sysbench_oltp_read_write(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS,
                                                     SYSBENCH_NORMAL_TABLE_SIZE, 100)
         time.sleep(5)

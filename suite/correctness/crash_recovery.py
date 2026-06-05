@@ -27,7 +27,7 @@ class CrashRecovery(BaseTest):
 
     def sysbench_run(self):
         # Sysbench dataload for consistency test
-        sysbench = sysbench_run.SysbenchRun(self.node1, debug)
+        sysbench = sysbench_run.SysbenchRun(self.node1, debug, workdir)
 
         sysbench.test_sanity_check(db)
         sysbench.test_sysbench_load(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS, SYSBENCH_NORMAL_TABLE_SIZE)
@@ -46,7 +46,7 @@ class CrashRecovery(BaseTest):
                 while active data load in primary node
         """
         self.sysbench_run()
-        sysbench_pid = utility.sysbench_pid()
+        sysbench_pid = utility.sysbench_pid(self.node1)
         if test_name == "with_force_kill":
             time.sleep(10)
             utility_cmd.kill_cluster_node(self.node3)
@@ -72,10 +72,10 @@ class CrashRecovery(BaseTest):
                 utility_cmd.check_testcase(result, "Shutdown cluster node for crash recovery")
                 time.sleep(10)
                 restart_node_check_recovery_status(self.node3)
-                sysbench_pid = utility.sysbench_pid()
+                sysbench_pid = utility.sysbench_pid(self.node1)
                 if not sysbench_pid:
                     self.sysbench_run()
-                    sysbench_pid = utility.sysbench_pid()
+                    sysbench_pid = utility.sysbench_pid(self.node1)
                     time.sleep(5)
                 utility_cmd.kill_process(sysbench_pid, "sysbench", True)
 

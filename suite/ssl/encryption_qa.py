@@ -25,7 +25,7 @@ class EncryptionTest(BaseTest):
             checksum = table_checksum.TableChecksum(self.node1, workdir, pt_basedir, debug)
             checksum.sanity_check(self.pxc_nodes)
 
-        sysbench = sysbench_run.SysbenchRun(self.node1, debug)
+        sysbench = sysbench_run.SysbenchRun(self.node1, debug, workdir)
         sysbench.test_sanity_check(db)
         sysbench.test_sysbench_load(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS, SYSBENCH_LOAD_TEST_TABLE_SIZE)
         sysbench.sysbench_ts_encryption(db, SYSBENCH_THREADS)
@@ -40,7 +40,7 @@ class EncryptionTest(BaseTest):
         for val1, val2, val3, val4, val5, val6 in \
                 itertools.product(option_values, repeat=6):
             # Start PXC cluster for encryption test
-            server_startup = pxc_startup.StartCluster(self.get_number_of_nodes(), debug)
+            server_startup = pxc_startup.StartCluster(self.get_number_of_nodes(), debug, worker_id=worker_id)
             server_startup.sanity_check()
 
             options = {"default_table_encryption": val1,
@@ -73,7 +73,6 @@ class EncryptionTest(BaseTest):
             if os.path.isfile(parent_dir + '/util/executesql.py'):
                 execute_sql = executesql.GenerateSQL(self.node1, db, 1000)
                 execute_sql.create_table()
-                sys.stdout = sys.__stdout__
 
             # Checksum for tables in test DB for 8.0.
             if int(version) >= int("080000"):

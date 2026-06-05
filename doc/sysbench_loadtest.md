@@ -1,6 +1,8 @@
 Sysbench Loadtest QA script
 ---------------------------
-This suite will help us to test the workload in Percona XtraDB Cluster. To enable encryption options you should use the argument --encryption-run with pxc qa framework.
+This suite tests workload in Percona XtraDB Cluster. Encryption can be enabled
+with `--encryption-run`. Sysbench data sizes can be customized in
+[config.ini](../config.ini).
 
 Currently we are using following sysbench testsuite for workload test.
 * sysbench_customized_dataload_test.py
@@ -16,12 +18,25 @@ Currently we are using following sysbench testsuite for workload test.
 * sysbench_wsrep_provider_option_random_test.py
   * This testsuite will help us to test PXC with different wsrep provider options
 
-PS : We can customize the sysbench data size through [config.ini](../config.ini)
+Running tests
+-------------
+
+Run all loadtest and sysbench_run suite tests:
+
+```bash
+python3 qa_framework.py --suites=loadtest,sysbench_run
+```
+
+Run a single test:
+
+```bash
+python3 qa_framework.py --tests=loadtest.sysbench_load_test.py
+```
 
 Sysbench Loadtest suite log
 ---------------------
 ```
-python3 qa_framework.py --testname=suite/loadtest/sysbench_wsrep_provider_option_random_test.py
+$ python3 qa_framework.py --tests=loadtest.sysbench_wsrep_provider_option_random_test.py
 
 --------------------------------
 
@@ -39,7 +54,7 @@ PXC WSREP provider random test
 16:41:47  PXC: shutting down cluster node1                                                                    [ ✓ ]
 
 
-python3 qa_framework.py --testname=suite/loadtest/sysbench_load_test.py
+python3 qa_framework.py --tests=loadtest.sysbench_load_test.py
 
 -------------------------
 
@@ -71,7 +86,7 @@ PXC sysbench load test
 16:59:37  PXC: shutting down cluster node1                                                                    [ ✓ ]
 
 
-python3 qa_framework.py --testname=suite/loadtest/sysbench_random_load_test.py
+python3 qa_framework.py --tests=loadtest.sysbench_random_load_test.py
 
 -------------------------------
 
@@ -87,7 +102,7 @@ PXC sysbench random load test
 17:00:44  Sysbench data load (threads : 50)                                                                   [ ✓ ]
 
 
-python3 qa_framework.py --testname=suite/sysbench_run/sysbench_customized_dataload_test.py
+python3 qa_framework.py --tests=sysbench_run.sysbench_customized_dataload_test.py
 
 ----------------------------------------
 
@@ -105,7 +120,7 @@ PXC sysbench customized data load test
 10:35:37  PXC: shutting down cluster node1                                                                    [ ✓ ]
 
 
-python3 qa_framework.py --testname=suite/sysbench_run/sysbench_oltp_test.py
+python3 qa_framework.py --tests=sysbench_run.sysbench_oltp_test.py
 
 ------------------------
 
@@ -128,7 +143,7 @@ PXC sysbench oltp test
 10:41:12  Checksum run for DB: test                                                                           [ ✓ ]
 
 
-python3 qa_framework.py --testname=suite/sysbench_run/sysbench_read_only_test.py
+python3 qa_framework.py --tests=sysbench_run.sysbench_read_only_test.py
 
 -----------------------------
 

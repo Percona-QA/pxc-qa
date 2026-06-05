@@ -7,12 +7,27 @@ This script will check following testcases.
 * ChaosMonkey style QA
 * Cluster Interaction QA
 
-Note : We can also enable encryption options with the argument `--encryption-run`
+Encryption can be enabled with `--encryption-run`. Debug logging uses `--debug`.
+
+Running tests
+-------------
+
+Run the full correctness suite:
+
+```bash
+python3 qa_framework.py --suites=correctness
+```
+
+Run a single test:
+
+```bash
+python3 qa_framework.py --tests=correctness.cluster_interaction.py
+```
 
 Correctness QA run log
 ----------------------
 ```
-$ python3 pxc_qa_framework.py  --suite=correctness
+$ python3 qa_framework.py --suites=correctness
 ---------------------------------------------------
 Crash recovery QA using forceful mysqld termination
 ---------------------------------------------------
@@ -90,7 +105,7 @@ PXC ChaosMonkey Style test
 07:42:50  pt-table-checksum run status                                                                        [ ✔ ]
 $
 
-$ ./suite/correctness/cluster_interaction.py
+$ python3 qa_framework.py --tests=correctness.cluster_interaction.py
 ----------------------------------------------
 Cluster interaction QA using flow control test
 ----------------------------------------------

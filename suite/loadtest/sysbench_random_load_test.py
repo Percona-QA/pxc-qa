@@ -29,7 +29,7 @@ class SysbenchRandomLoadTest(BaseTest):
         if int(version) < int("080000"):
             checksum = table_checksum.TableChecksum(nodes[0], workdir, pt_basedir, debug)
             checksum.sanity_check(nodes)
-        sysbench = sysbench_run.SysbenchRun(nodes[0], debug)
+        sysbench = sysbench_run.SysbenchRun(nodes[0], debug, workdir)
         sysbench.test_sanity_check(db)
         for table_count in tables:
             sysbench.test_sysbench_cleanup(db, table_count, table_count, SYSBENCH_RANDOM_LOAD_TABLE_SIZE)

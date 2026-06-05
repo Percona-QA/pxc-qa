@@ -1,16 +1,80 @@
 #!/usr/bin/env python3
 import os
+import signal
+import socket
+import subprocess
 import sys
 import time
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 
 import config
 from util.db_connection import DbConnection
 
 pstress_bin = config.PSTRESS_BIN
 
-DEFAULT_SERVER_UP_TIMEOUT = 300
+DEFAULT_SERVER_UP_TIMEOUT = 600
+# Seconds to poll after launching a background server before treating launch as successful.
+SERVER_LAUNCH_CHECK_TIMEOUT = 2
+
+
+def launch_server(cmd):
+    """Start a long-running server command and verify it did not fail immediately."""
+    stripped_cmd = cmd.strip()
+    if not stripped_cmd.startswith('exec '):
+        cmd = 'exec ' + stripped_cmd
+    process = subprocess.Popen(cmd, shell=True, start_new_session=True, stderr=subprocess.DEVNULL)
+    deadline = time.time() + SERVER_LAUNCH_CHECK_TIMEOUT
+    while time.time() < deadline:
+        returncode = process.poll()
+        if returncode is not None:
+            return returncode
+        time.sleep(0.2)
+    return 0
+
+# Bounded, parallel-safe port allocation.
+# Each worker owns a contiguous band of ports so that parallel workers never
+# overlap, and the values always stay well below the 65535 TCP limit \
+# Layout per worker band (WORKER_PORT_BAND_SIZE wide):
+#   PXC nodes : band_base + (node - 1) * NODE_PORT_STRIDE
+#   PS nodes  : band_base + PS_PORT_SUB_BASE  + (node - 1) * NODE_PORT_STRIDE
+# PXC additionally uses galera/ist/sst ports which fit inside the
+# per-node stride.
+PORT_BAND_BASE = 10000
+WORKER_PORT_BAND_SIZE = 1000
+NODE_PORT_STRIDE = 100
+PS_PORT_SUB_BASE = 600
+
+
+def is_port_busy(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(1)
+        return sock.connect_ex(('127.0.0.1', port)) == 0
+
+
+def find_available_ports(start, end, count):
+    """Return count available TCP ports from the inclusive range [start, end].
+
+    Ports are scanned in ascending order. Raises if fewer than count are free.
+    """
+    if count < 1:
+        raise ValueError("count must be at least 1")
+    if start > end:
+        raise ValueError("start must be <= end")
+
+    ports = []
+    for port in range(start, end + 1):
+        if not is_port_busy(port):
+            ports.append(port)
+            if len(ports) == count:
+                return ports
+    raise Exception(
+        f"Found only {len(ports)} available port(s) in range {start}-{end}, needed {count}")
+
+
+def worker_port_band_base(worker_id):
+    return PORT_BAND_BASE + max(worker_id, 0) * WORKER_PORT_BAND_SIZE
 
 
 class RplType(Enum):
@@ -31,14 +95,12 @@ def test_scenario_header(test_scenario_description: str):
     print('------------------------------------------------------------------------------------')
 
 
-def sysbench_pid():
-    query = 'pidof sysbench'
-    return os.popen(query).read().rstrip()
-
-
-def sysbech_node_pid(node_number: int):
-    query = ("ps -ef | grep sysbench | grep -v gep | grep node" + str(node_number) +
-             " | awk '{print $2}'")
+def sysbench_pid(node: DbConnection):
+    worker_id = node.get_worker_id()
+    pattern = "node" + str(node.get_node_number())
+    if worker_id > 0:
+        pattern = "w" + str(worker_id) + "/" + pattern
+    query = ("ps -ef | grep sysbench | grep -v grep | grep " + pattern + " | awk '{print $2}'")
     return os.popen(query).read().rstrip()
 
 
@@ -117,6 +179,9 @@ class Utility:
                                                     "performance_schema.replication_connection_status where "
                                                     "channel_name='" + channel + "'")
         if replica_status not in ['ON', 'Yes']:
+            if int(version) >= int("050700"):
+                status = node.execute_get_values("SELECT * FROM performance_schema.replication_connection_status where channel_name='" + channel + "'")
+                print(status)
             self.check_testcase(1, "Replica IO thread is not running, check replica status")
         else:
             self.check_testcase(0, "Replica IO thread is running fine")
@@ -136,6 +201,9 @@ class Utility:
                                                     "performance_schema.replication_applier_status where "
                                                     "channel_name='" + channel + "'")
         if replica_status not in ['YES', 'ON']:
+            if int(version) >= int("050700"):
+                status = node.execute_get_values("SELECT * FROM performance_schema.replication_applier_status_by_worker where channel_name='" + channel + "'")
+                print(status)
             self.check_testcase(1, "Replica SQL thread is not running, check replica status")
         else:
             self.check_testcase(0, "Replica SQL thread is running fine")
@@ -214,15 +282,18 @@ class Utility:
         if self.debug == 'YES':
             print("Terminating " + process_name + " run : " + kill_cmd)
         result = os.system(kill_cmd)
+        if "sysbench" in process_name and result != 0:
+            result = 0
         if ignore_error:
             result = 0
         self.check_testcase(result, "Killed " + process_name + " run")
         time.sleep(10)
 
     def restart_cluster(self, nodes: list[DbConnection]):
-        os.system("sed -i 's#safe_to_bootstrap: 0#safe_to_bootstrap: 1#' " +
-                  config.WORKDIR + '/node1/grastate.dat')
         for node in nodes:
+            if 'node1' in Path(node.get_data_dir()).parts:
+                os.system("sed -i 's#safe_to_bootstrap: 0#safe_to_bootstrap: 1#' " +
+                          node.get_data_dir() + '/grastate.dat')
             self.restart_and_check_node(node)
 
     def restart_and_check_node(self, node: DbConnection):
@@ -231,10 +302,15 @@ class Utility:
 
     def restart_cluster_node(self, node: DbConnection):
 
-        restart_server = "bash " + node.get_startup_script()
+        startup_script = node.get_startup_script()
         if self.debug == 'YES':
-            print(restart_server)
-        result = os.system(restart_server)
+            print(startup_script)
+        with open(startup_script) as startup_file:
+            startup_cmd = startup_file.read().strip()
+        result = launch_server(startup_cmd)
+        if result != 0:
+            print("Starting/Restarting Cluster Node" + str(node.get_node_number()) +
+                  " failed on launch with exit code " + str(result))
         self.check_testcase(result, "Starting/Restarting Cluster Node" + str(node.get_node_number()))
 
     def startup_check(self, node: DbConnection, terminate_on_startup_failure: bool = True):
@@ -242,22 +318,30 @@ class Utility:
             startup status.
         """
         dbconnection_status = -1
-        for startup_timer in range(DEFAULT_SERVER_UP_TIMEOUT):
+        start_time = time.time()
+        while True:
             time.sleep(1)
             dbconnection_status = int(node.connection_check(False))
             if dbconnection_status == 0:
+                break
+            if time.time() > start_time + DEFAULT_SERVER_UP_TIMEOUT:
+                print("Timeout while starting/restarting cluster node" + str(node.get_node_number()))
                 break
         self.check_testcase(dbconnection_status, "Verify node startup", terminate_on_startup_failure)
         return dbconnection_status
 
     def wait_for_wsrep_status(self, node: DbConnection, node_sync_timeout=DEFAULT_SERVER_UP_TIMEOUT):
         node_synced = -1
-        for startup_timer in range(node_sync_timeout):
+        start_time = time.time()
+        while True:
             time.sleep(1)
             wsrep_status = (node.execute_get_row("show status like 'wsrep_local_state_comment'")[1]
                             .strip())
             if wsrep_status == "Synced":
                 node_synced = 0
+                break
+            if time.time() > start_time + node_sync_timeout:
+                print("Timeout while waiting for cluster node" + str(node.get_node_number()) + " to sync")
                 break
         self.check_testcase(node_synced, "Cluster Node recovery is successful")
 
@@ -267,14 +351,15 @@ class Utility:
         pid = os.popen(query).read().rstrip()
         self.kill_process(pid, "cluster node")
 
-    def kill_cluster_nodes(self):
+    def kill_cluster_nodes(self, nodes: list[DbConnection]):
         if self.debug == 'YES':
             print("Killing existing mysql process using 'kill -9' command")
-        os.system("ps -ef | grep '" + config.WORKDIR + "/conf/node[0-9].cnf' | grep -v grep | "
-                                                       "awk '{print $2}' | xargs kill -9 >/dev/null 2>&1")
+        for node in nodes:
+            self.kill_cluster_node(node)
 
     def pstress_run(self, workdir: str, socket: str, db: str, seed: int, step_num: int = None,
                     tables: int = 25, threads: int = 50, records: int = None, pstress_extra: str = None):
+        timeout = 300
         if not os.path.isfile(pstress_bin):
             print(pstress_bin + ' does not exist')
             exit(1)
@@ -286,10 +371,24 @@ class Utility:
         pstress_cmd = pstress_bin + " --database=" + db + " --threads=" + str(threads) + " --logdir=" + \
                       workdir + "/log --log-all-queries --log-failed-queries --user=root --socket=" + \
                       socket + " --seed " + str(seed) + " --tables " + str(tables) + " " + \
-                      pstress_extra + " --seconds 300 --grammar-file " + \
+                      pstress_extra + " --seconds " + str(timeout) + " --grammar-file " + \
                       config.PSTRESS_GRAMMAR_FILE + extra_setting + " > " + \
                       workdir + "/log/pstress_run.log"
         self.check_testcase(0, "PSTRESS RUN command : " + pstress_cmd)
-        query_status = os.system(pstress_cmd)
-        if int(query_status) != 0:
-            self.check_testcase(1, "ERROR!: PSTRESS run failed")
+        is_terminate : bool = True
+        process = subprocess.Popen(pstress_cmd, shell=True, start_new_session=True)
+        try:
+            query_status = process.wait(timeout=timeout * 2)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait()
+            print("Timeout! pstress run timed out after " + str(timeout * 2) + " seconds")
+            query_status = 1
+            is_terminate = False
+        # pstress subsequent runs would have failed queries too.
+        if step_num is not None and step_num > 1:
+            is_terminate = False
+        self.check_testcase(query_status, "PSTRESS run completed", is_terminate)

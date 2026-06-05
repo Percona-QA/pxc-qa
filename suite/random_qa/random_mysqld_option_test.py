@@ -13,7 +13,7 @@ from util import sysbench_run
 from util import utility
 
 conf_file = parent_dir + '/conf/mysql_options_pxc80.txt'
-random_mysql_error_dir = WORKDIR + '/random_mysql_error'
+random_mysql_error_dir = workdir + '/random_mysql_error'
 
 
 class RandomMySQLDOptionQA(BaseTest):
@@ -22,7 +22,7 @@ class RandomMySQLDOptionQA(BaseTest):
 
     def data_load(self):
         # Sysbench data load
-        sysbench = sysbench_run.SysbenchRun(self.node1, debug)
+        sysbench = sysbench_run.SysbenchRun(self.node1, debug, workdir)
         sysbench.test_sanity_check(db)
         sysbench.test_sysbench_load(db, 10, 10, SYSBENCH_NORMAL_TABLE_SIZE)
 
@@ -58,7 +58,7 @@ for mysql_option in mysql_options:
         if os.path.exists(opt_dir):
             os.rmdir(opt_dir)
         os.mkdir(opt_dir)
-        shutil.copytree(WORKDIR + '/log', opt_dir)
+        shutil.copytree(workdir + '/log', opt_dir)
         continue
     random_mysql_option_qa.data_load()
     random_mysql_option_qa.shutdown_nodes()

@@ -25,7 +25,7 @@ class SysbenchLoadTest(BaseTest):
         if int(version) < int("080000"):
             checksum = table_checksum.TableChecksum(node, workdir, pt_basedir, debug)
             checksum.sanity_check(self.pxc_nodes)
-        sysbench = sysbench_run.SysbenchRun(node, debug)
+        sysbench = sysbench_run.SysbenchRun(node, debug, workdir)
         sysbench.test_sanity_check(db)
         sysbench.test_sysbench_custom_table(db)
 

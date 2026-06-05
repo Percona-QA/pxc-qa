@@ -1,16 +1,40 @@
 Random QA script
 -------------
 
-This script is a small test and not a suite. pxc_util.py will start a 3 node cluster. We can configure it to start 3 node cluster with different options apart from the default. 
-If we need to start cluster with `innodb-buffer-pool-size=128M` then we can edit pxc_util.py as below 
-result = server_startup.start_cluster('--innodb-buffer-pool-size=128M ')
-We can also enable encryption options with `--encryption-run`
-We can also enable debug options with `--debug`
+This suite contains standalone stress and option-randomization tests. The helper
+script `util/pxc_util.py` can start a 3-node cluster for manual testing. To
+start a cluster with a custom option such as `--innodb-buffer-pool-size=128M`,
+edit the `start_cluster()` call in `util/pxc_util.py`.
+
+Encryption can be enabled with `--encryption-run`. Debug logging uses `--debug`.
+
+Running tests
+-------------
+
+Run the full random_qa suite:
+
+```bash
+python3 qa_framework.py --suites=random_qa
+```
+
+Run individual tests:
+
+```bash
+python3 qa_framework.py --tests=random_qa.random_mysqld_option_test.py
+python3 qa_framework.py --tests=random_qa.pstress_crash_recovery_qa.py
+python3 qa_framework.py --tests=random_qa.pstress_random_qa.py
+```
+
+Start a cluster manually with the utility script:
+
+```bash
+python3 util/pxc_util.py --start --debug
+```
 
 Random QA run log
 --------------
 ```
-$ python3 suite/random_qa/pxc_util.py --start --debug
+$ python3 util/pxc_util.py --start --debug
 
 13:26:04  Startup sanity check                                                                                [ ✓ ]
 13:26:04  Configuration file creation                                                                         [ ✓ ]
@@ -33,7 +57,7 @@ $ python3 suite/random_qa/pxc_util.py --start --debug
 	/dev/shm/qa/Percona-XtraDB-Cluster_8.0.26-16.1_Linux.x86_64.glibc2.17/bin/mysql --user=root --socket=/dev/shm/qa/node3/mysql.sock
 
 
-$ python3 qa_framework.py --testname=suite/random_qa/random_mysqld_option_test.py
+$ python3 qa_framework.py --tests=random_qa.random_mysqld_option_test.py
 ------------------------------
 PXC Random MySQLD options test
 ------------------------------
@@ -142,7 +166,7 @@ PXC Random MySQLD options test
 [...]
 
 
-$ python3 qa_framework.py --testname=suite/random_qa/pstress_crash_recovery_qa.py
+$ python3 qa_framework.py --tests=random_qa.pstress_crash_recovery_qa.py
 --------------------
 PXC Random PSTRESS QA
 --------------------
@@ -174,7 +198,7 @@ PXC Random PSTRESS QA
 06:42:11  PSTRESS RUN command : /home/vagrant/pstress/src/pstress-pxc --database=test --threads=10 --logdir=/dev/shm/qa/log --log-all-queries --log-failed-queries --user=root --socket=/dev/shm/qa/node1/mysql.sock --seed 1000 --tables 5 --records 10 --no-encryption --seconds 30 --grammar-file /home/vagrant/pstress/src/grammar.sql --step 6 > /dev/shm/qa/log/pstress_run.log[ ✓ ]
 
 
-$ python3 qa_framework.py --testname=suite/random_qa/pstress_random_qa.py
+$ python3 qa_framework.py --tests=random_qa.pstress_random_qa.py
 
 --------------------
 PXC Random PSTRESS QA

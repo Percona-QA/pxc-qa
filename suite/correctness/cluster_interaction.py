@@ -25,7 +25,7 @@ class ClusterInteraction(BaseTest):
 
     def sysbench_run(self, db, background_run=False):
         # Sysbench dataload for cluster interaction test
-        sysbench = sysbench_run.SysbenchRun(self.node1, debug)
+        sysbench = sysbench_run.SysbenchRun(self.node1, debug, workdir)
         sysbench.test_sanity_check(db)
         sysbench.test_sysbench_load(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS, SYSBENCH_NORMAL_TABLE_SIZE)
         if encryption:
@@ -42,7 +42,7 @@ class ClusterInteraction(BaseTest):
             3) Node joining
         """
         self.sysbench_run(db, True)
-        sysbench_pid = utility.sysbench_pid()
+        sysbench_pid = utility.sysbench_pid(self.node1)
         if int(version) > int("050700"):
             utility_cmd.check_testcase(0, "Initiating flow control test")
             #for j in range(1, 2):

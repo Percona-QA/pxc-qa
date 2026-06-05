@@ -41,12 +41,12 @@ class WSREPProviderRandomTest(BaseTest):
 
             self.set_wsrep_provider_options(wsrep_provider_option)
             self.start_pxc()
-            sysbench = sysbench_run.SysbenchRun(self.node1, debug)
+            sysbench = sysbench_run.SysbenchRun(self.node1, debug, workdir)
             sysbench.test_sanity_check(db)
             sysbench.test_sysbench_load(db, use_load_table_size=True)
 
             sysbench.test_sysbench_oltp_read_write(db, time=300, background=True, use_load_table_size=True)
-            sysbench_pid = utility.sysbench_pid()
+            sysbench_pid = utility.sysbench_pid(self.node1)
             print("Sysbench pid : " + sysbench_pid)
             time.sleep(100)
             self.node2.shutdown()

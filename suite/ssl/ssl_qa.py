@@ -19,7 +19,7 @@ class SSLCheck(BaseTest):
         super().__init__(ssl=True)
 
     def sysbench_run(self, test_db):
-        sysbench = sysbench_run.SysbenchRun(self.node1, debug)
+        sysbench = sysbench_run.SysbenchRun(self.node1, debug, workdir)
 
         sysbench.test_sanity_check(test_db)
         sysbench.test_sysbench_load(test_db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS, SYSBENCH_NORMAL_TABLE_SIZE)

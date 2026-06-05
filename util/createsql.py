@@ -30,9 +30,20 @@ class GenerateSQL:
         self.table_count = random.randint(1, len(table_names))
         self.column_count = random.randint(1, len(column_names))
         self.insert_sql_count = int(((self.lines / self.table_count) - 1))
-        
+        self._saved_stdout = None
+        self._out_file_handle = None
+
     def out_file(self):
-        sys.stdout = open(self.filename, "w")
+        self._saved_stdout = sys.stdout
+        self._out_file_handle = open(self.filename, "w")
+        sys.stdout = self._out_file_handle
+
+    def restore_stdout(self):
+        if self._out_file_handle is not None:
+            sys.stdout = self._saved_stdout
+            self._out_file_handle.close()
+            self._out_file_handle = None
+            self._saved_stdout = None
 
     def create_table(self):
         # Create table with random data.
