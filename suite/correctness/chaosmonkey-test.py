@@ -24,7 +24,7 @@ class ChaosMonkeyQA(BaseTest):
 
         sysbench.test_sanity_check(db)
         sysbench.test_sysbench_load(db)
-        if encryption == 'YES':
+        if encryption:
             sysbench.encrypt_sysbench_tables(db)
         sysbench.test_sysbench_oltp_read_write(db, background=True)
 

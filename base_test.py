@@ -1,4 +1,6 @@
 import argparse
+import json
+import os
 
 from config import WORKDIR, NODE, PT_BASEDIR, BASEDIR, SERVER, PXC_LOWER_BASE, PXC_UPPER_BASE
 from util import pxc_startup, ps_startup
@@ -7,6 +9,7 @@ from util.utility import *
 workdir = WORKDIR
 pt_basedir = PT_BASEDIR
 server = SERVER
+comp_name = 'component_keyring_file'
 
 # Read argument
 parser = argparse.ArgumentParser(prog='PXC test', usage='%(prog)s [options]')
@@ -16,9 +19,7 @@ parser.add_argument('-d', '--debug', action='store_true',
                     help='This option will enable debug logging')
 
 args = parser.parse_args()
-encryption = 'NO'
-if args.encryption_run is True:
-    encryption = 'YES'
+encryption = args.encryption_run
 
 debug = 'NO'
 if args.debug is True:
@@ -32,6 +33,16 @@ upper_version = get_mysql_version(PXC_UPPER_BASE)
 low_version_num = utility_cmd.version_check(PXC_LOWER_BASE)
 high_version_num = utility_cmd.version_check(PXC_UPPER_BASE)
 db = "test"
+
+if encryption:
+    if int(version) >= int("080024"):
+        with open(os.path.join(BASEDIR, 'bin', 'mysqld.my'), 'w') as manifest_file:
+            json.dump({"read_local_manifest": True}, manifest_file, indent=2)
+            manifest_file.write('\n')
+
+        with open(os.path.join(BASEDIR, 'lib', 'plugin', comp_name + '.cnf'), 'w') as cnf_file:
+            json.dump({"read_local_config": True}, cnf_file, indent=2)
+            cnf_file.write('\n')
 
 
 class BaseTest:
@@ -64,10 +75,10 @@ class BaseTest:
         else:
             my_extra_options = self.__my_extra
 
-        # Start PXC cluster for ChaosMonkey test
+        # Start PXC cluster
         server_startup = pxc_startup.StartCluster(self.__number_of_nodes, debug, self.__version)
         server_startup.sanity_check()
-        if encryption == 'YES' or self.encrypt:
+        if encryption or self.encrypt:
             server_startup.create_config('encryption', self.__wsrep_provider_options,
                                          custom_conf_settings=custom_conf_settings)
         elif self.ssl:
@@ -76,7 +87,7 @@ class BaseTest:
         else:
             server_startup.create_config('none', self.__wsrep_provider_options,
                                          custom_conf_settings=custom_conf_settings)
-        server_startup.initialize_cluster()
+        server_startup.initialize_cluster(encryption=encryption or self.encrypt)
         if self.__extra_config_file is not None:
             server_startup.add_myextra_configuration(self.__extra_config_file)
         self.pxc_nodes = server_startup.start_cluster(my_extra_options, terminate_on_startup_failure)
@@ -106,11 +117,11 @@ class BaseTest:
             my_extra_options = self.__my_extra
         server_startup = ps_startup.StartPerconaServer(self.__number_of_nodes, debug, self.__version)
         server_startup.test_sanity_check()
-        if encryption == 'YES':
+        if encryption or self.encrypt:
             server_startup.create_config('encryption')
         else:
             server_startup.create_config()
-        server_startup.initialize_server()
+        server_startup.initialize_server(encryption=encryption or self.encrypt)
         if self.__extra_config_file is not None:
             server_startup.add_myextra_configuration(self.__extra_config_file)
         self.ps_nodes = server_startup.start_server(my_extra_options)

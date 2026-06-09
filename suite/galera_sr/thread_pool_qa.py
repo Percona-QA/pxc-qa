@@ -16,7 +16,12 @@ from util import pxc_startup
 
 class ThreadPooling(BaseTest):
     def __init__(self):
-        super().__init__(my_extra="--max-connections=1500 --innodb_buffer_pool_size=2G --innodb_log_file_size=1G")
+        my_extra = "--max-connections=1500 --innodb_buffer_pool_size=2G"
+        if int(version) < int("090000"):
+            my_extra = my_extra + " --innodb_log_file_size=1G"
+        else:
+            my_extra = my_extra + " --innodb_redo_log_capacity=2G"
+        super().__init__(my_extra=my_extra)
 
     def sysbench_run(self, port):
         # Sysbench data load
@@ -41,7 +46,7 @@ class ThreadPooling(BaseTest):
                 itertools.product(thread_handling_option, thread_pool_size, thread_pool_max_threads):
             my_extra = "--thread_handling=" + tp_option + " --thread_pool_size=" + str(tp_size) + \
                        " --thread_pool_max_threads=" + str(tp_max_thread)
-            # Start PXC cluster for encryption test
+            # Start PXC cluster for thread pooling test
             utility_cmd.check_testcase(0, "Thread pooling options : " + my_extra)
             server_startup = pxc_startup.StartCluster(3, debug)
             server_startup.sanity_check()

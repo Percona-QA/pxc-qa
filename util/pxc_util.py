@@ -24,9 +24,9 @@ parser.add_argument('-d', '--debug', action='store_true',
                     help='This option will enable debug logging')
 args = parser.parse_args()
 if args.encryption_run is True:
-    encryption = 'YES'
+    encryption = True
 else:
-    encryption = 'NO'
+    encryption = False
 if args.debug is True:
     debug = 'YES'
 else:

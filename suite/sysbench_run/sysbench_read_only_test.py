@@ -13,7 +13,12 @@ from util import table_checksum
 
 class SysbenchReadOnlyTest(BaseTest):
     def __init__(self):
-        super().__init__(my_extra="--max-connections=1500 --innodb_buffer_pool_size=8G --innodb_log_file_size=1G")
+        my_extra = "--max-connections=1500 --innodb_buffer_pool_size=8G"
+        if int(version) < int("090000"):
+            my_extra = my_extra + " --innodb_log_file_size=1G"
+        else:
+            my_extra = my_extra + " --innodb_redo_log_capacity=2G"
+        super().__init__(my_extra=my_extra)
 
     def sysbench_run(self, nodes: list[DbConnection]):
         # Sysbench load test

@@ -49,20 +49,18 @@ class EncryptionTest(BaseTest):
                        "innodb_redo_log_encrypt": val4,
                        "innodb_undo_log_encrypt": val5,
                        "binlog_encryption": val6,
-                       "early-plugin-load": "keyring_file.so",
-                       "keyring_file_data": "keyring",
                        "encrypt_tmp_files": "ON"}
 
-            server_startup.create_config('encryption', custom_conf_settings=options,
+            server_startup.create_config(wsrep_extra='encryption', custom_conf_settings=options,
                                          default_encryption_conf=False)
 
             if options['innodb_sys_tablespace_encrypt'] == 'ON':
                 init_extra = ("--innodb_sys_tablespace_encrypt=ON --early-plugin-load=keyring_file.so "
                               "--keyring_file_data=keyring")
-                server_startup.initialize_cluster(init_extra)
+                server_startup.initialize_cluster(encryption=True, init_extra=init_extra)
 
             else:
-                server_startup.initialize_cluster()
+                server_startup.initialize_cluster(encryption=True)
             self.pxc_nodes = server_startup.start_cluster()
             self.node1 = self.pxc_nodes[0]
             self.node2 = self.pxc_nodes[1]

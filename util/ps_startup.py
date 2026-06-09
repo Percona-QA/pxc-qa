@@ -3,6 +3,7 @@
 # Updated by Parveez Baig
 # This will help us to start Percona Server
 
+import json
 import os
 import subprocess
 import random
@@ -15,6 +16,7 @@ from util.utility import Version, Utility
 workdir = WORKDIR
 base_dir = BASEDIR
 user = USER
+comp_name = 'component_keyring_file'
 
 cwd = os.path.dirname(os.path.realpath(__file__))
 parent_dir = os.path.normpath(os.path.join(cwd, '../'))
@@ -46,6 +48,12 @@ def node_socket(i: int):
 
 def init_log(i: int):
     return workdir + '/log/ps_init' + str(i) + '.log'
+
+
+def component_keyring_file_path(node_number: int):
+    keyring_dir = os.path.join(workdir, 'keyring')
+    os.makedirs(keyring_dir, exist_ok=True)
+    return os.path.join(keyring_dir, 'psnode' + str(node_number) + '_' + comp_name)
 
 
 def set_base_dir(server_version : Version):
@@ -128,6 +136,10 @@ class StartPerconaServer:
             cnf_name.write('!include ' + workdir_custom_conf + '\n')
             if conf_extra == 'encryption':
                 shutil.copy(default_encryption_conf, workdir_encryption_conf)
+                if int(version) < int("080024"):
+                    with open(workdir_encryption_conf, 'a+') as cnf_file:
+                        cnf_file.write('early-plugin-load = keyring_file.so\n')
+                        cnf_file.write('keyring_file_data = keyring\n')
                 cnf_name.write('!include ' + workdir_encryption_conf + '\n')
             cnf_name.close()
 
@@ -151,7 +163,7 @@ class StartPerconaServer:
         utility_cmd = utility.Utility(self.__debug)
         utility_cmd.check_testcase(result, "PS: Adding custom configuration")
 
-    def initialize_server(self):
+    def initialize_server(self, encryption: bool = False):
         """ Method to initialize the server database
             directories. This will initialize the server
             using --initialize-insecure option for
@@ -180,6 +192,16 @@ class StartPerconaServer:
                 print(initialize_node)
             run_query = subprocess.call(initialize_node, shell=True, stderr=subprocess.DEVNULL)
             result = ("{}".format(run_query))
+            if encryption:
+                if int(version) >= int("080024"):
+                    with open(os.path.join(datadir, 'mysqld.my'), 'w') as manifest_file:
+                        json.dump({"components": "file://" + comp_name}, manifest_file, indent=2)
+                        manifest_file.write('\n')
+
+                    with open(os.path.join(datadir, comp_name + '.cnf'), 'w') as cnf_file:
+                        json.dump({"path": component_keyring_file_path(i), "read_only": False}, cnf_file, indent=2)
+                        cnf_file.write('\n')
+
         utility_cmd = utility.Utility(self.__debug)
         utility_cmd.check_testcase(int(result), "PS: Initializing PS server")
 
