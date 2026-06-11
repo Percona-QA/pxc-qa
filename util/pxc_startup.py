@@ -3,6 +3,7 @@
 # Updated by Parveez Baig
 # This will help us to start Percona XtraDB Cluster, Upgrade cluster nodes, Backup the cluster nodes.
 
+from gzip import BadGzipFile
 import json
 import os
 import subprocess
@@ -75,6 +76,37 @@ def component_keyring_file_path(node_number: int):
     os.makedirs(keyring_dir, exist_ok=True)
     return os.path.join(keyring_dir, 'node' + str(node_number) + '_' + comp_name)
 
+
+def cluster_keyring_file_path():
+    keyring_dir = os.path.join(workdir, 'keyring')
+    os.makedirs(keyring_dir, exist_ok=True)
+    return os.path.join(keyring_dir, 'cluster_' + comp_name)
+
+def setup_global_keyring():
+    with open(os.path.join(base_dir, 'bin', 'mysqld.my'), 'w') as manifest_file:
+        json.dump({"components": "file://" + comp_name}, manifest_file, indent=2)
+        manifest_file.write('\n')
+    with open(os.path.join(base_dir, 'lib', 'plugin', comp_name + '.cnf'), 'w') as cnf_file:
+        json.dump({"path": cluster_keyring_file_path(), "read_only": False}, cnf_file, indent=2)
+        cnf_file.write('\n')
+
+def setup_local_keyring_redirect():
+    """Per-table encryption can use local manifest/config files in the datadir."""
+    with open(os.path.join(base_dir, 'bin', 'mysqld.my'), 'w') as manifest_file:
+        json.dump({"read_local_manifest": True}, manifest_file, indent=2)
+        manifest_file.write('\n')
+    with open(os.path.join(base_dir, 'lib', 'plugin', comp_name + '.cnf'), 'w') as cnf_file:
+        json.dump({"read_local_config": True}, cnf_file, indent=2)
+        cnf_file.write('\n')
+
+def setup_local_keyring(node_number: int):
+    with open(os.path.join(node_datadir(node_number), 'mysqld.my'), 'w') as manifest_file:
+        json.dump({"components": "file://" + comp_name}, manifest_file, indent=2)
+        manifest_file.write('\n')
+
+    with open(os.path.join(node_datadir(node_number), comp_name + '.cnf'), 'w') as cnf_file:
+        json.dump({"path": component_keyring_file_path(node_number), "read_only": False}, cnf_file, indent=2)
+        cnf_file.write('\n')
 
 def add_conf(option_values: dict):
     cnf_name = open(workdir_custom_cnf, 'a+')
@@ -207,7 +239,7 @@ class StartCluster:
         utility_cmd = utility.Utility(self.__debug)
         utility_cmd.check_testcase(result, "PXC: Adding custom configuration")
 
-    def initialize_cluster(self, init_extra=None, encryption=False):
+    def initialize_cluster(self, init_extra=None, encryption=False, sys_table_encrypt=False):
         """ Method to initialize the cluster database
             directories. This will initialize the cluster
             using --initialize-insecure option for
@@ -219,16 +251,29 @@ class StartCluster:
         # This is for encryption testing. Encryption features are not fully supported
         # if wsrep_extra == "encryption":
         #    init_opt = '--innodb_undo_tablespaces=2 '
+
+        version = Utility.version_check(base_dir)
+
+        if encryption:
+            if sys_table_encrypt:
+                init_extra = init_extra + " --innodb_sys_tablespace_encrypt=ON"
+                if int(version) < int("080024"):
+                    init_extra = init_extra + " --early-plugin-load=keyring_file.so --keyring_file_data=keyring"
+                else:
+                    setup_global_keyring()
+            elif int(version) >= int("080024"):
+                setup_local_keyring_redirect()
+
         for i in range(1, self.__number_of_nodes + 1):
             conf = node_conf(i)
             datadir = node_datadir(i)
             initialize_log = init_log(i)
+
             if os.path.exists(datadir):
                 os.system('rm -rf ' + datadir + '>/dev/null 2>&1')
             if not os.path.isfile(conf):
                 print('Could not find config file ' + conf)
                 exit(1)
-            version = Utility.version_check(base_dir)
             if int(version) < int("050700"):
                 os.mkdir(datadir)
                 initialize_node = (base_dir + '/scripts/mysql_install_db --no-defaults --basedir=' + base_dir +
@@ -241,15 +286,9 @@ class StartCluster:
                 print(initialize_node)
             run_query = subprocess.call(initialize_node, shell=True, stderr=subprocess.DEVNULL)
             result = ("{}".format(run_query))
-            if encryption:
+            if encryption and not sys_table_encrypt:
                 if int(version) >= int("080024"):
-                    with open(os.path.join(datadir, 'mysqld.my'), 'w') as manifest_file:
-                        json.dump({"components": "file://" + comp_name}, manifest_file, indent=2)
-                        manifest_file.write('\n')
-
-                    with open(os.path.join(datadir, comp_name + '.cnf'), 'w') as cnf_file:
-                        json.dump({"path": component_keyring_file_path(i), "read_only": False}, cnf_file, indent=2)
-                        cnf_file.write('\n')
+                    setup_local_keyring(i)
 
         utility_cmd = utility.Utility(self.__debug)
         utility_cmd.check_testcase(int(result), "Initializing cluster")
@@ -294,7 +333,7 @@ class StartCluster:
         return pxc_nodes
 
     @staticmethod
-    def join_new_node(donor: DbConnection, joiner_node_number: int, basedir: str = base_dir, debug: str = 'NO'):
+    def join_new_node(donor: DbConnection, joiner_node_number: int, basedir: str = base_dir, debug: str = 'NO', encryption: bool = False):
         joiner_node_cnf = node_conf(joiner_node_number)
         startup_script = node_startup_script(joiner_node_number)
         joiner_data_dir = node_datadir(joiner_node_number)
@@ -332,6 +371,8 @@ class StartCluster:
                   "#node" + str(joiner_node_number) + "#g' " + startup_script)
         os.system("rm -rf " + joiner_data_dir)
         os.mkdir(joiner_data_dir)
+        if encryption:
+            setup_local_keyring(joiner_node_number)
 
         time.sleep(10)
         joiner = db_connection.DbConnection(user=user, socket=node_socket(joiner_node_number),
@@ -346,8 +387,8 @@ class StartCluster:
         return joiner
 
     @staticmethod
-    def join_new_upgraded_node(donor: DbConnection, joiner_node_number: int, debug: str = 'NO'):
-        return StartCluster.join_new_node(donor, joiner_node_number, higher_version_basedir, debug)
+    def join_new_upgraded_node(donor: DbConnection, joiner_node_number: int, debug: str = 'NO', encryption: bool = False):
+        return StartCluster.join_new_node(donor, joiner_node_number, higher_version_basedir, debug, encryption)
 
     @staticmethod
     def upgrade_pxc_node(node: DbConnection, debug, node_to_add_load: DbConnection = None, config_replace: dict = None,
