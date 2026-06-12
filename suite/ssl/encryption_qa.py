@@ -55,12 +55,11 @@ class EncryptionTest(BaseTest):
                                          default_encryption_conf=False)
 
             if options['innodb_sys_tablespace_encrypt'] == 'ON':
-                init_extra = ("--innodb_sys_tablespace_encrypt=ON --early-plugin-load=keyring_file.so "
-                              "--keyring_file_data=keyring")
-                server_startup.initialize_cluster(encryption=True, init_extra=init_extra)
-
+                sys_table_encrypt = True
             else:
-                server_startup.initialize_cluster(encryption=True)
+                sys_table_encrypt = False
+            server_startup.initialize_cluster(encryption=True,  sys_table_encrypt=sys_table_encrypt)
+
             self.pxc_nodes = server_startup.start_cluster()
             self.node1 = self.pxc_nodes[0]
             self.node2 = self.pxc_nodes[1]

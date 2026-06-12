@@ -76,7 +76,7 @@ class ClusterInteraction(BaseTest):
         self.sysbench_run('test_one')
         self.sysbench_run('test_two')
         self.sysbench_run('test_three')
-        pxc_startup.StartCluster.join_new_node(self.node3, 4, debug=debug)
+        pxc_startup.StartCluster.join_new_node(self.node3, 4, debug=debug, encryption=encryption)
 
 
 cluster_interaction = ClusterInteraction()

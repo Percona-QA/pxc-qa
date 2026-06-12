@@ -18,7 +18,7 @@ class PXCUpgrade(BaseTest):
         # Start PXC cluster for rolling replacement test
         node = self.node3
         for i in [4, 5, 6]:
-            node = pxc_startup.StartCluster.join_new_upgraded_node(node, i, debug)
+            node = pxc_startup.StartCluster.join_new_upgraded_node(node, i, debug, encryption)
             self.pxc_nodes.append(node)
 
 

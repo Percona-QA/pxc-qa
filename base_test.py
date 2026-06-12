@@ -34,16 +34,6 @@ low_version_num = utility_cmd.version_check(PXC_LOWER_BASE)
 high_version_num = utility_cmd.version_check(PXC_UPPER_BASE)
 db = "test"
 
-if encryption:
-    if int(version) >= int("080024"):
-        with open(os.path.join(BASEDIR, 'bin', 'mysqld.my'), 'w') as manifest_file:
-            json.dump({"read_local_manifest": True}, manifest_file, indent=2)
-            manifest_file.write('\n')
-
-        with open(os.path.join(BASEDIR, 'lib', 'plugin', comp_name + '.cnf'), 'w') as cnf_file:
-            json.dump({"read_local_config": True}, cnf_file, indent=2)
-            cnf_file.write('\n')
-
 
 class BaseTest:
     def __init__(self, number_of_nodes: int = int(NODE),
