@@ -182,7 +182,7 @@ class StartCluster:
         utility_cmd = utility.Utility(self.__debug)
         utility_cmd.check_testcase(result, "Startup sanity check")
 
-    def create_config(self, wsrep_extra, wsrep_provider_option=None, set_admin_address: bool = False,
+    def create_config(self, wsrep_extra = None, wsrep_provider_option=None, set_admin_address: bool = False,
                       custom_conf_settings: dict = None, default_encryption_conf: bool = True):
         """ Method to create cluster configuration file
             based on the node count. To create configuration

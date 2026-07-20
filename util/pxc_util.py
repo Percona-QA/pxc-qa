@@ -6,7 +6,7 @@ import argparse
 from util.pxc_startup import StartCluster
 
 cwd = os.path.dirname(os.path.realpath(__file__))
-parent_dir = os.path.normpath(os.path.join(cwd, '../../'))
+parent_dir = os.path.normpath(os.path.join(cwd, '../'))
 sys.path.insert(0, parent_dir)
 from base_test import BaseTest
 from config import *

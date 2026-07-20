@@ -1,5 +1,12 @@
 import configparser
 import unittest
+import os
+import sys
+
+cwd = os.path.dirname(os.path.realpath(__file__))
+parent_dir = os.path.normpath(os.path.join(cwd, '../'))
+sys.path.insert(0, parent_dir)
+
 from util import db_connection, pxc_startup
 
 config = configparser.ConfigParser()
@@ -12,8 +19,7 @@ pxc_nodes = []
 class TestStartup(unittest.TestCase):
 
     def test_01_sanity_check(self):
-        self.assertEqual(cluster.sanity_check(), 0,
-                         'work/base directory have some issues')
+        cluster.sanity_check()
         print('PXC Sanity check')
 
     def test_02_initialize_cluster(self):
