@@ -26,7 +26,7 @@ class SetupReplication(BaseTest):
     @staticmethod
     def sysbench_run(node: DbConnection, test_db):
         # Sysbench data load
-        sysbench = sysbench_run.SysbenchRun(node, debug)
+        sysbench = sysbench_run.SysbenchRun(node, debug, workdir)
 
         sysbench.test_sanity_check(test_db)
         sysbench.test_sysbench_load(test_db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS, SYSBENCH_NORMAL_TABLE_SIZE)
@@ -53,11 +53,12 @@ class SetupReplication(BaseTest):
         my_extra = ""
         if int(version) < int("080400"):
             my_extra = "--master_info_repository=TABLE --relay_log_info_repository=TABLE"
-        if comment == "mta":
-            if int(version) > int("080300"):
-                my_extra = my_extra + ' --replica-parallel-workers=5'
-            else:
-                my_extra = my_extra + ' --slave-parallel-workers=5'
+        if comment == "sta":
+            if int(version) >= int("080027"):
+                my_extra = my_extra + ' --replica-parallel-workers=0'
+        else:
+            if int(version) < int("080027"):
+                my_extra = my_extra + ' --slave-parallel-workers=4'
 
         self.start_pxc(my_extra)
         number_of_nodes = self.get_number_of_nodes()
@@ -72,6 +73,10 @@ class SetupReplication(BaseTest):
             temp = source_node
             source_node = replica_node
             replica_node = temp
+        else:
+            for node in self.pxc_nodes:
+                node.execute("SET GLOBAL pxc_strict_mode = DISABLED")
+                utility_cmd.wait_for_wsrep_status(node)
 
         if comment == "msr":
             utility_cmd.invoke_replication(source_node, replica_node, self.rpl_type, 'channel1', version=version)
@@ -108,5 +113,5 @@ if __name__ == '__main__':
     if int(version) > int("050700"):
         utility.test_header("NON-GTID PS1->PXC, PS2->PXC Multi source replication")
         replication_run.replication_testcase(2, comment='msr')
-        utility.test_header("NON-GTID PS->PXC multi threaded async replication")
-        replication_run.replication_testcase(comment='mta')
+        utility.test_header("NON-GTID PS->PXC single threaded async replication")
+        replication_run.replication_testcase(comment='sta')

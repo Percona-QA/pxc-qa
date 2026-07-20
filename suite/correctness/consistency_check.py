@@ -21,7 +21,7 @@ class ConsistencyCheck(BaseTest):
 
     def sysbench_run(self):
         # Sysbench dataload for consistency test
-        sysbench = sysbench_run.SysbenchRun(self.node1, debug)
+        sysbench = sysbench_run.SysbenchRun(self.node1, debug, workdir)
 
         sysbench.test_sanity_check(db)
         sysbench.test_sysbench_load(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS, SYSBENCH_NORMAL_TABLE_SIZE)

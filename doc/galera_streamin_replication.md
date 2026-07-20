@@ -1,11 +1,27 @@
 Streaming Replication QA script
 ---------------------
-This suite will test streaming replication feature.
+This suite tests Galera streaming replication and thread-pool combinations.
+
+Running tests
+-------------
+
+Run the full `galera_sr` suite:
+
+```bash
+python3 qa_framework.py --suites=galera_sr
+```
+
+Run individual tests:
+
+```bash
+python3 qa_framework.py --tests=galera_basic_sr_qa.py
+python3 qa_framework.py --tests=galera_sr.thread_pool_qa.py
+```
 
 Streaming replication run log
 -----------------------------
 ```
-$ python3 qa_framework.py --testname=suite/galera_sr/galera_basic_sr_qa.py
+$ python3 qa_framework.py --tests=galera_basic_sr_qa.py
 --------------------------------
 
 PXC Streaming Replication test
@@ -27,7 +43,7 @@ PXC Streaming Replication test
 01:26:32  SR testcase( DML row count 10000, fragment_unit : bytes, fragment_size : 2 )                        [ ✓ ]
 [..]
 
-$ python3 qa_framework.py --testname=suite/galera_sr/thread_pool_qa.py
+$ python3 qa_framework.py --tests=galera_sr.thread_pool_qa.py
 --------------------------------
 
 PXC Thread Pooling test

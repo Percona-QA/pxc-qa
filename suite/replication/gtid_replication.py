@@ -27,5 +27,5 @@ if __name__ == '__main__':
     if int(version) > int("050700"):
         utility.test_header("GTID PS1->PXC, PS2->PXC Multi source replication")
         gtid_replication_run.replication_testcase(2, comment='msr')
-        utility.test_header("GTID PS->PXC multi threaded async replication")
-        gtid_replication_run.replication_testcase(comment='mta')
+        utility.test_header("GTID PS->PXC single threaded async replication")
+        gtid_replication_run.replication_testcase(comment='sta')

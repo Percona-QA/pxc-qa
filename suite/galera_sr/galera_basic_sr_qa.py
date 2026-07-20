@@ -28,7 +28,7 @@ class StreamingReplication(BaseTest):
             checksum = table_checksum.TableChecksum(self.node1, workdir, pt_basedir, debug)
             checksum.sanity_check(self.pxc_nodes)
 
-        sysbench = sysbench_run.SysbenchRun(self.node1, debug)
+        sysbench = sysbench_run.SysbenchRun(self.node1, debug, workdir)
         sysbench.test_sanity_check(db)
         sysbench.test_sysbench_load(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS, SYSBENCH_LOAD_TEST_TABLE_SIZE)
 
@@ -48,7 +48,7 @@ class StreamingReplication(BaseTest):
             if debug == 'YES':
                 print("call " + db + ".sr_procedure")
             proc_args = [str(rows), trx_fragment_unit, str(trx_fragment_size)]
-            self.node1.call_proc(db + '.sr_procedure', proc_args)
+            self.node1.call_proc(db + '.sr_procedure', proc_args, innodb_lock_wait_timeout=180)
 
             sr_combination = "DML row count " + proc_args[0] + ", fragment_unit : " + \
                              proc_args[1] + ", fragment_size : " + proc_args[2]

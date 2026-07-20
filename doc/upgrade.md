@@ -1,7 +1,23 @@
 Upgrade QA script
 ---------------------
-This suite will help us to test Percona XtraDB Cluster upgrade. You should pass PXC base directory locations in [config.ini](../config.ini) file  To enable encryption options you should use 
-the argument `--encryption-run` with pxc qa framework.
+This suite tests Percona XtraDB Cluster upgrade. Configure lower and upper PXC
+tarball paths in [config.ini](../config.ini) under the `[upgrade]` section.
+Encryption can be enabled with `--encryption-run`.
+
+Running tests
+-------------
+
+Run the full upgrade suite:
+
+```bash
+python3 qa_framework.py --suites=upgrade
+```
+
+Run a single upgrade test:
+
+```bash
+python3 qa_framework.py --tests=upgrade.pxc_upgrade.py
+```
 
 Upgrade suite log
 ------------------

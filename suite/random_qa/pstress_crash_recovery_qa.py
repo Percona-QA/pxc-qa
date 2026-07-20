@@ -30,7 +30,7 @@ class RandomPstressQA(BaseTest):
             utility_cmd.pstress_run(socket=self.node1.get_socket(), db=db, seed=n, step_num=i,
                                     pstress_extra=pstress_extra, workdir=workdir)
             # kill existing mysqld process
-            utility_cmd.kill_cluster_nodes()
+            utility_cmd.kill_cluster_nodes(self.pxc_nodes)
             utility_cmd.restart_cluster(self.pxc_nodes)
 
 

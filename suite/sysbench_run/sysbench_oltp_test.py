@@ -26,7 +26,7 @@ class SysbenchOLTPTest(BaseTest):
         if int(version) < int("080000"):
             checksum = table_checksum.TableChecksum(nodes[0], workdir, pt_basedir, debug)
             checksum.sanity_check(nodes)
-        sysbench = sysbench_run.SysbenchRun(nodes[0], debug)
+        sysbench = sysbench_run.SysbenchRun(nodes[0], debug, workdir)
         for thread in threads:
             sysbench.test_sanity_check(db)
             sysbench.sysbench_custom_oltp_load(db, 5, thread)

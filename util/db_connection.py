@@ -1,13 +1,33 @@
-import sys
 from datetime import datetime
 
 import mysql.connector
+from mysql.connector import errors as mysql_errors
 from _mysql_connector import MySQLInterfaceError
 
+CONNECTION_TIMEOUT = 60
+QUERY_TIMEOUT = 600
+
+# read_timeout/write_timeout and their exceptions require mysql-connector-python 9.2.0+.
+ReadTimeoutError = getattr(mysql_errors, 'ReadTimeoutError', None)
+WriteTimeoutError = getattr(mysql_errors, 'WriteTimeoutError', None)
+QUERY_TIMEOUT_SUPPORTED = ReadTimeoutError is not None and WriteTimeoutError is not None
+
+
+def _is_query_timeout(exc: BaseException) -> bool:
+    return QUERY_TIMEOUT_SUPPORTED and isinstance(exc, (ReadTimeoutError, WriteTimeoutError))
+
+
+class QueryExecutionError(Exception):
+    """Raised when a query fails.
+    """
+
+class QueryTimeoutError(Exception):
+    """Raised when a query exceeds QUERY_TIMEOUT.
+    """
 
 class DbConnection:
     def __init__(self, user, password=None, host='localhost', port=None, socket=None, node_num: int = 1, data_dir=None,
-                 conf_file=None, err_log=None, base_dir=None, startup_script=None, debug='No'):
+                 conf_file=None, err_log=None, base_dir=None, startup_script=None, debug='No', worker_id: int = 0):
         self.__user = user
         self.__socket = socket
         self.__data_dir = data_dir
@@ -20,13 +40,38 @@ class DbConnection:
         self.__host = host
         self.__port = port
         self.__password = password
+        self.__worker_id = worker_id
 
-    def connect(self):
+    def connect(self, query_timeout: int = QUERY_TIMEOUT):
+        connect_kwargs = {
+            'host': self.__host,
+            'user': self.__user,
+            'connection_timeout': CONNECTION_TIMEOUT,
+        }
+        if QUERY_TIMEOUT_SUPPORTED:
+            connect_kwargs['read_timeout'] = query_timeout
+            connect_kwargs['write_timeout'] = query_timeout
         if self.__socket is None:
-            return mysql.connector.connect(host=self.__host, port=self.__port, user=self.__user,
-                                           password=self.__password)
-        else:
-            return mysql.connector.connect(host=self.__host, unix_socket=self.__socket, user=self.__user)
+            connect_kwargs['port'] = self.__port
+            connect_kwargs['password'] = self.__password
+            return mysql.connector.connect(**connect_kwargs)
+        connect_kwargs['unix_socket'] = self.__socket
+        return mysql.connector.connect(**connect_kwargs)
+
+    def _execute(self, cursor, query, params=None):
+        try:
+            if params is None:
+                cursor.execute(query)
+            else:
+                cursor.execute(query, params)
+        except Exception as query_error:
+            if _is_query_timeout(query_error):
+                raise QueryTimeoutError(
+                    "Query timed out after " + str(query)
+                ) from query_error
+            raise QueryExecutionError(
+                "Error while executing query: " + str(query) + " :: " + str(query_error)
+            ) from query_error
 
     def connection_check(self, log_error_on_failure: bool = True):
         """ Method to test the cluster database connection.
@@ -67,7 +112,7 @@ class DbConnection:
             if self.__debug == 'YES' and log_query:
                 print(query)
             cursor = cnx.cursor()
-            cursor.execute(query)
+            self._execute(cursor, query)
             return cursor
         finally:
             # closing database connection.
@@ -87,7 +132,7 @@ class DbConnection:
             cnx = DbConnection.connect(self)
             cursor = cnx.cursor(buffered=True)
             for query in queries:
-                cursor.execute(query)
+                self._execute(cursor, query)
         finally:
             if cnx is not None and cnx.is_connected():
                 cnx.close()
@@ -97,17 +142,16 @@ class DbConnection:
         try:
             cnx = self.connect()
             cursor = cnx.cursor(buffered=True)
-            cursor.execute(query)
+            self._execute(cursor, query)
             row = cursor.fetchone()
             if self.__debug == 'YES':
                 print(row[0])
             return row[0]
-        except MySQLInterfaceError as mysqlInterfaceError:
-            if retries > 0:
+        except QueryExecutionError as query_error:
+            if isinstance(query_error.__cause__, MySQLInterfaceError) and retries > 0:
                 print("Retrying, left number of retries" + str(retries))
-                self.execute_get_value(query, int(retries - 1))
-            else:
-                raise Exception(str(mysqlInterfaceError))
+                return self.execute_get_value(query, int(retries - 1))
+            raise
         finally:
             # closing database connection.
             if cnx is not None and cnx.is_connected():
@@ -118,7 +162,7 @@ class DbConnection:
         try:
             cnx = self.connect()
             cursor = cnx.cursor(buffered=True)
-            cursor.execute(query)
+            self._execute(cursor, query)
             records = cursor.fetchall()
             print("Number of rows: ", cursor.rowcount)
             if self.__debug == 'YES':
@@ -134,7 +178,7 @@ class DbConnection:
         try:
             cnx = self.connect()
             cursor = cnx.cursor()
-            cursor.execute(query)
+            self._execute(cursor, query)
             records = cursor.fetchall()
             if self.__debug == 'YES':
                 print("Total number of rows in table: ", cursor.rowcount)
@@ -149,7 +193,7 @@ class DbConnection:
         try:
             cnx = self.connect()
             cursor = cnx.cursor(buffered=True, dictionary=True)
-            cursor.execute(query)
+            self._execute(cursor, query)
             row = cursor.fetchone()
             if self.__debug == 'YES':
                 print(row[column])
@@ -163,9 +207,12 @@ class DbConnection:
         try:
             cnx = self.connect()
             cursor = cnx.cursor()
-            cursor.execute("shutdown")
+            self._execute(cursor, "shutdown")
             print("Shutdown done Node" + str(self.__node_num))
             return 0
+        except QueryTimeoutError as query_timeout_error:
+            print("Timed out while shutting down node" + str(self.__node_num) + f": {query_timeout_error}")
+            raise
         except Exception as e:
             print("Error while connecting to MySQL/Shutting down", e)
             print(e)
@@ -175,19 +222,21 @@ class DbConnection:
             if cnx is not None and cnx.is_connected():
                 cnx.close()
 
-    def execute_query_from_file(self, file_path, multi=True):
+    def execute_query_from_file(self, file_path):
         cnx = None
         try:
             cnx = self.connect()
             cursor = cnx.cursor()
             with open(file_path, "r") as file:
                 sql_commands = file.read()
-                cursor.execute(sql_commands, multi=multi)
-            print("Execution of queries completed successfully.")
+                self._execute(cursor, sql_commands)
+            print("Execution of query from file completed successfully.")
+        except QueryTimeoutError as query_timeout_error:
+            print("Timed out while executing query from file" + file_path + f": {query_timeout_error}")
+            raise
         except Exception as e:
-            print("An error occurred while executing queries from file" + file_path + ": {}".format(e))
-            cnx.close()
-            sys.exit(1)
+            print("An error occurred while executing query from file" + file_path + ": {}".format(e))
+            raise
         finally:
             if cnx is not None and cnx.is_connected():
                 cnx.close()
@@ -206,10 +255,13 @@ class DbConnection:
             cursor = cnx.cursor(buffered=True)
             try:
                 if command.rstrip() != '':
-                    cursor.execute(command)
+                    self._execute(cursor, command)
             except ValueError as msg:
                 # Skip and report error
                 print("Command skipped: ", msg)
+            except QueryTimeoutError as query_timeout_error:
+                print("Timed out while executing query" + command + f": {query_timeout_error}")
+                raise
             except Exception as e:
                 print("Executing query ", command, "failed due to exception", str(e))
             finally:
@@ -218,23 +270,31 @@ class DbConnection:
         if self.__debug == 'YES':
             print("Execution of queries from the file ", file_path, "is done")
 
-    def call_proc(self, proc: str, args: list[str]):
+    def call_proc(self, proc: str, args: list[str], innodb_lock_wait_timeout: int = 0):
         cnx = None
         try:
-            cnx = self.connect()
+            cnx = self.connect(query_timeout=QUERY_TIMEOUT * 10)
             cursor = cnx.cursor()
+            if innodb_lock_wait_timeout > 0:
+                self._execute(cursor, "SET SESSION innodb_lock_wait_timeout = %s",
+                              (innodb_lock_wait_timeout,))
             cursor.callproc(proc, args=args)
             print("Execution of stored procedure call completed successfully.")
+        except QueryTimeoutError as query_timeout_error:
+            print("Timed out while executing stored procedure" + proc + f": {query_timeout_error}")
+            raise
         except Exception as e:
             print("An error occurred while executing stored procedure" + proc + ": {}".format(e))
-            cnx.close()
-            sys.exit(1)
+            raise
         finally:
             if cnx is not None and cnx.is_connected():
                 cnx.close()
 
     def get_port(self):
         return self.execute_get_value("select @@port")
+
+    def get_admin_port(self):
+        return self.execute_get_value("select @@admin_port")
 
     def get_mysql_version(self):
         return self.execute_get_value("select @@version")
@@ -262,3 +322,7 @@ class DbConnection:
 
     def get_node_number(self):
         return self.__node_num
+        
+    def get_worker_id(self):
+        return self.__worker_id
+

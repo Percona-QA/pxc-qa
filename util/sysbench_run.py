@@ -1,6 +1,9 @@
 import os
 import itertools
+import signal
+import subprocess
 import sys
+import time
 from config import *
 from util.db_connection import DbConnection
 
@@ -17,13 +20,18 @@ EXPORT_LUA_PATH = 'export SBTEST_SCRIPTDIR="' + parent_dir + \
 
 lua_dir = parent_dir + "/sysbench_lua/"
 
+# Maximum time (in seconds) a single sysbench run is allowed to take.
+SYSBENCH_RUN_TIMEOUT = 50 * 60
+# Seconds to poll after launching background sysbench before treating launch as successful.
+SYSBENCH_LAUNCH_CHECK_TIMEOUT = 2
+
 
 class SysbenchRun:
-    def __init__(self, node: DbConnection, debug):
+    def __init__(self, node: DbConnection, debug, workdir):
         self.__node = node
         self.__debug = debug
         self.__utility_cmd = utility.Utility(debug)
-        self.__log_dir = WORKDIR + "/log/"
+        self.__log_dir = workdir + "/log/"
 
     def sanity_check(self, db):
         # Sanity check for sysbench run
@@ -73,11 +81,12 @@ class SysbenchRun:
         return self.execute_sysbench_query(query)
 
     def test_sysbench_load(self, db, tables=SYSBENCH_TABLE_COUNT, threads=SYSBENCH_THREADS,
-                           table_size=SYSBENCH_NORMAL_TABLE_SIZE, use_load_table_size: bool = False):
+                           table_size=SYSBENCH_NORMAL_TABLE_SIZE, use_load_table_size: bool = False,
+                           ignore_timeout: bool = False):
         if use_load_table_size:
             table_size = SYSBENCH_LOAD_TEST_TABLE_SIZE
         result = self.sysbench_load(db, tables, threads, table_size)
-        self.__utility_cmd.check_testcase(result, "Sysbench data load with threads " + str(threads))
+        self.__utility_cmd.check_testcase(result, "Sysbench data load with threads " + str(threads), not ignore_timeout)
 
     def sysbench_ts_encryption(self, db, threads):
         # Check InnoDB system tablespace encryption
@@ -201,10 +210,7 @@ class SysbenchRun:
         self.__utility_cmd.check_testcase(result, "Sysbench data cleanup (threads : " + str(threads) + ")")
 
     def sysbench_oltp_read_write(self, db, table_count, threads, table_size, time, background: bool = False, port=None):
-        if background:
-            log_file = "sysbench_read_write_" + str(threads) + ".log & "
-        else:
-            log_file = "sysbench_read_write_" + str(threads) + ".log "
+        log_file = "sysbench_read_write_" + str(threads) + ".log"
 
         if port is not None:
             host_to_connect = " --mysql-host=127.0.0.1 --mysql-port=" + str(port)
@@ -219,7 +225,7 @@ class SysbenchRun:
                  "--mysql-user={user} --mysql-password={password} --db-driver=mysql " + host_to_connect +
                  " --time={time} --db-ps-mode=disable run > {log-file}").format(**params)
 
-        return self.execute_sysbench_query(query)
+        return self.execute_sysbench_query(query, background=background)
 
     def test_sysbench_oltp_read_write(self, db, tables=SYSBENCH_TABLE_COUNT, threads=SYSBENCH_THREADS,
                                       table_size=SYSBENCH_NORMAL_TABLE_SIZE, time=SYSBENCH_RUN_TIME,
@@ -230,10 +236,7 @@ class SysbenchRun:
         self.__utility_cmd.check_testcase(result, "Initiated sysbench oltp run", is_terminate)
 
     def sysbench_oltp_read_only(self, db, table_count, threads, table_size, time, background: bool = False):
-        if background:
-            log_file = "sysbench_read_only.log & "
-        else:
-            log_file = "sysbench_read_only.log "
+        log_file = "sysbench_read_only.log"
 
         params = self.get_params('oltp_read_only.lua', table_size, table_count, threads,
                                  db, log_file)
@@ -244,17 +247,14 @@ class SysbenchRun:
                  "--mysql-user={user} --mysql-password={password} --db-driver=mysql "
                  "--mysql-socket={socket} --time={time} --db-ps-mode=disable run > {log-file}").format(**params)
 
-        return self.execute_sysbench_query(query)
+        return self.execute_sysbench_query(query, background=background)
 
     def test_sysbench_oltp_read_only(self, db, table_count, threads, table_size, time, background=False):
         result = self.sysbench_oltp_read_only(db, table_count, threads, table_size, time, background)
         self.__utility_cmd.check_testcase(result, "Initiated sysbench oltp read only run")
 
     def sysbench_oltp_write_only(self, db, table_count, threads, table_size, time, background: bool = False):
-        if background:
-            log_file = "sysbench_write_only.log &"
-        else:
-            log_file = "sysbench_write_only.log"
+        log_file = "sysbench_write_only.log"
 
         params = self.get_params('oltp_write_only.lua', table_size, table_count, threads,
                                  db, log_file)
@@ -269,7 +269,7 @@ class SysbenchRun:
                  "--mysql-user={user} --mysql-password={password} --db-driver=mysql "
                  "--mysql-socket={socket} --time={time} --db-ps-mode=disable run > {log-file}").format(**params)
 
-        return self.execute_sysbench_query(query)
+        return self.execute_sysbench_query(query, background=background)
 
     def sysbench_custom_table(self, db, table_count, thread, table_size):
         table_format = ['DEFAULT', 'DYNAMIC', 'FIXED', 'COMPRESSED', 'REDUNDANT', 'COMPACT']
@@ -308,10 +308,7 @@ class SysbenchRun:
         utility_cmd.check_testcase(result, "Sysbench data load")
 
     def sysbench_tpcc_run(self, db, table_count, threads, table_size, time, background: bool = False):
-        if background:
-            log_file = "sysbench_write_only.log &"
-        else:
-            log_file = "sysbench_write_only.log"
+        log_file = "sysbench_write_only.log"
 
         params = self.get_params('oltp_write_only.lua', table_size, table_count, threads,
                                  db, log_file)
@@ -326,12 +323,37 @@ class SysbenchRun:
                  "--mysql-user={user} --mysql-password={password} --db-driver=mysql "
                  "--mysql-socket={socket} --time={time} --db-ps-mode=disable run > {log-file}").format(**params)
 
-        return self.execute_sysbench_query(query)
+        return self.execute_sysbench_query(query, background=background)
 
-    def execute_sysbench_query(self, query):
+    def execute_sysbench_query(self, query, background: bool = False):
+        full_cmd = EXPORT_LUA_PATH + "; exec " + query.strip()
         if self.__debug == 'YES':
-            print(query)
-        if int(os.system(EXPORT_LUA_PATH + ";" + query)) != 0:
+            print(full_cmd)
+        process = subprocess.Popen(full_cmd, shell=True, start_new_session=True, stderr=subprocess.STDOUT)
+
+        if background:
+            deadline = time.time() + SYSBENCH_LAUNCH_CHECK_TIMEOUT
+            while time.time() < deadline:
+                returncode = process.poll()
+                if returncode is not None:
+                    if returncode != 0:
+                        print("ERROR!: sysbench failed on launch")
+                        return 1
+                    return 0
+                time.sleep(0.2)
+            return 0
+
+        try:
+            returncode = process.wait(timeout=SYSBENCH_RUN_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait()
+            print("Timeout! sysbench run timed out after " + str(SYSBENCH_RUN_TIMEOUT / 60) + " minutes")
+            return 1
+        if returncode != 0:
             print("ERROR!: sysbench run is failed")
             return 1
         return 0

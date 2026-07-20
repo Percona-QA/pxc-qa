@@ -1,4 +1,5 @@
 import os
+import subprocess
 import configparser
 from util import utility
 from util.db_connection import DbConnection
@@ -10,6 +11,7 @@ parent_dir = os.path.normpath(os.path.join(script_dir, '../'))
 rand_gen_dir = parent_dir + '/randgen'
 gen_data_pl = rand_gen_dir + '/gendata.pl'
 
+RQG_RUN_TIMEOUT = 60 * 60
 
 class RQGDataGen:
     def __init__(self, node: DbConnection, debug):
@@ -50,7 +52,12 @@ class RQGDataGen:
                               work_dir + "/log/rqg_run.log 2>&1"
                 if self.debug == 'YES':
                     print(rqg_command)
-                result = os.system(rqg_command)
+                try:
+                    result = subprocess.call(rqg_command, shell=True, timeout=RQG_RUN_TIMEOUT)
+                except subprocess.TimeoutExpired:
+                    print("RQG data load (DB: " + db + ") timed out after "
+                          + str(RQG_RUN_TIMEOUT) + " seconds")
+                    result = 1
                 self.utility_cmd.check_testcase(result, "RQG data load (DB: " + db + ")")
 
     def pxc_dataload(self, work_dir):

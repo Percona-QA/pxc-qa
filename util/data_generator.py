@@ -49,7 +49,9 @@ else:
 # Generate random data
 generate_sql = createsql.GenerateSQL(outfile, LINE_COUNT)
 generate_sql.out_file()
-generate_sql.create_table()
-generate_sql.drop_table()
-sys.stdout = sys.__stdout__
+try:
+    generate_sql.create_table()
+    generate_sql.drop_table()
+finally:
+    generate_sql.restore_stdout()
 print("DONE! Generated " + outfile)

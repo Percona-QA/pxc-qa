@@ -29,7 +29,7 @@ CREATE PROCEDURE pstest.PS_INSERT() BEGIN
     WHILE create_start <= create_count DO
       SET @tbl = concat("tbl",create_start);
       WHILE insert_start <= insert_count DO
-        SELECT SUBSTRING(MD5(RAND()) FROM 1 FOR 50) INTO @str;
+        SELECT SUBSTRING(SHA2(CONCAT(RAND()), 256) FROM 1 FOR 50) INTO @str;
         SET @s = concat("INSERT INTO ",@tbl," (rtext) VALUES('",@str,"')");
         PREPARE stmt1 FROM @s;
         EXECUTE stmt1;
@@ -82,7 +82,7 @@ CREATE PROCEDURE pstest.PS_UPDATE()    BEGIN
     WHILE create_start <= create_count DO
       SET @tbl = concat("tbl",create_start);
       WHILE update_start <= update_count DO
-        SELECT SUBSTRING(MD5(RAND()) FROM 1 FOR 50) INTO @ustr;
+        SELECT SUBSTRING(SHA2(CONCAT(RAND()), 256) FROM 1 FOR 50) INTO @ustr;
         SET @s = concat("UPDATE ",@tbl ," SET rtext='",@ustr,"' ORDER BY RAND() LIMIT 1");
         PREPARE stmt1 FROM @s;
         EXECUTE stmt1;

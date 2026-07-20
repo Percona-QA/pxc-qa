@@ -30,7 +30,7 @@ class SysbenchLoadTest(BaseTest):
             checksum = table_checksum.TableChecksum(nodes[0], workdir, pt_basedir, debug)
             checksum.sanity_check(nodes)
         for thread in threads:
-            sysbench = sysbench_run.SysbenchRun(nodes[0], debug)
+            sysbench = sysbench_run.SysbenchRun(nodes[0], debug, workdir)
             if thread == 32:
                 sysbench.test_sanity_check(db)
             sysbench.test_sysbench_cleanup(db, thread, thread, SYSBENCH_LOAD_TEST_TABLE_SIZE)

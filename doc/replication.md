@@ -1,18 +1,33 @@
 Replication QA script
 ---------------------
-This suite will cover following replication testcases. To enable encryption options you should use 
-the argument `--encryption-run` with pxc qa framework.
+This suite covers the following replication testcases. Encryption can be enabled with
+`--encryption-run`.
 
-* PXC node as master and PS node as slave (GTID and Non-GTID)
-* PXC node as slave and PS node as master (GTID and Non-GTID)
-* Multi source replication - PXC node act as multi master slave (GTID and Non-GTID)
-* Multi thread replication - PXC node act as multi thread slave (GTID and Non-GTID)
+* PXC node as source and PS node as replica (GTID and Non-GTID)
+* PXC node as replica and PS node as source (GTID and Non-GTID)
+* Multi source replication - PXC node act as multi source replica (GTID and Non-GTID)
+* Multi thread replication - PXC node act as multi thread replica (GTID and Non-GTID)
 * Configure replication using Percona Xtrabackup
+
+Running tests
+-------------
+
+Run the full replication suite:
+
+```bash
+python3 qa_framework.py --suites=replication
+```
+
+Run a single test:
+
+```bash
+python3 qa_framework.py --tests=replication.replication.py
+```
 
 Replication suite log
 ---------------------
 ```
-$ python3 pxc_qa_framework.py  --suite=replication
+$ python3 qa_framework.py --suites=replication
 
 GTID PXC Node as Master and PS node as Slave
 ----------------------------------------------
@@ -163,4 +178,4 @@ NON-GTID PXC Node as Slave and PS node as Master
 07:18:59  PXC: IO thread slave status                                                                         [ ✔ ]
 07:18:59  PXC: SQL thread slave status                                                                        [ ✔ ]
 $
-````
+```

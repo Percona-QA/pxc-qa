@@ -30,7 +30,7 @@ class ThreadPooling(BaseTest):
             checksum = table_checksum.TableChecksum(self.node1, workdir, pt_basedir, debug)
             checksum.sanity_check(self.pxc_nodes)
 
-        sysbench = sysbench_run.SysbenchRun(self.node1, debug)
+        sysbench = sysbench_run.SysbenchRun(self.node1, debug, workdir)
         sysbench.test_sanity_check(db)
         sysbench.test_sysbench_load(db, 50, 50, SYSBENCH_NORMAL_TABLE_SIZE)
         # Sysbench OLTP read write run
@@ -48,14 +48,14 @@ class ThreadPooling(BaseTest):
                        " --thread_pool_max_threads=" + str(tp_max_thread)
             # Start PXC cluster for thread pooling test
             utility_cmd.check_testcase(0, "Thread pooling options : " + my_extra)
-            server_startup = pxc_startup.StartCluster(3, debug)
+            server_startup = pxc_startup.StartCluster(3, debug, worker_id=worker_id)
             server_startup.sanity_check()
             server_startup.create_config('none', set_admin_address=True)
             server_startup.initialize_cluster()
             self.pxc_nodes = server_startup.start_cluster(my_extra)
             self.node1 = self.pxc_nodes[0]
             utility_cmd.check_testcase(self.node1.connection_check(), "Database connection")
-            self.sysbench_run(33063)
+            self.sysbench_run(int(self.node1.get_admin_port()))
             self.shutdown_nodes(self.pxc_nodes)
 
 

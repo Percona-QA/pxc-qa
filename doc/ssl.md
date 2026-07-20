@@ -1,13 +1,28 @@
 SSL QA script
 -------------
 
-This script will enable SSL configurations for SST, data transfer and client server connection. 
-We can also enable encryption options with `--encryption-run`
+This suite enables SSL configurations for SST, data transfer, and client-server
+connections. Encryption can be enabled with `--encryption-run`.
+
+Running tests
+-------------
+
+Run the full SSL suite:
+
+```bash
+python3 qa_framework.py --suites=ssl
+```
+
+Run the encryption test only:
+
+```bash
+python3 qa_framework.py --tests=ssl.encryption_qa.py --encryption-run
+```
 
 SSL QA run log
 --------------
 ```
-$ python3 pxc_qa_framework.py  --suite=ssl
+$ python3 qa_framework.py --suites=ssl
 
 PXC SSL test
 --------------

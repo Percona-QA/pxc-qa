@@ -25,7 +25,7 @@ class PXCUpgrade(BaseTest):
 
     def sysbench_run(self, db, upgrade_type: str):
         # Sysbench dataload for consistency test
-        sysbench_ps_node1 = sysbench_run.SysbenchRun(self.ps_nodes[0], debug)
+        sysbench_ps_node1 = sysbench_run.SysbenchRun(self.ps_nodes[0], debug, workdir)
 
         sysbench_ps_node1.test_sanity_check(db)
         sysbench_ps_node1.test_sysbench_load(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS, SYSBENCH_NORMAL_TABLE_SIZE)
@@ -33,9 +33,9 @@ class PXCUpgrade(BaseTest):
             if encryption:
                 for i in range(1, int(SYSBENCH_TABLE_COUNT) + 1):
                     self.ps_nodes[0].execute('alter table ' + db + '.sbtest' + str(i) + " encryption='Y'")
-        sysbench_node1 = sysbench_run.SysbenchRun(self.node1, debug)
-        sysbench_node2 = sysbench_run.SysbenchRun(self.node2, debug)
-        sysbench_node3 = sysbench_run.SysbenchRun(self.node3, debug)
+        sysbench_node1 = sysbench_run.SysbenchRun(self.node1, debug, workdir)
+        sysbench_node2 = sysbench_run.SysbenchRun(self.node2, debug, workdir)
+        sysbench_node3 = sysbench_run.SysbenchRun(self.node3, debug, workdir)
         if upgrade_type == 'readwrite':
             sysbench_node1.test_sysbench_oltp_read_write(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS,
                                                          SYSBENCH_NORMAL_TABLE_SIZE, 1000, True)
@@ -60,13 +60,13 @@ class PXCUpgrade(BaseTest):
         self.sysbench_run('sbtest', upgrade_type)
         time.sleep(10)
         for node in [self.node3, self.node2, self.node1]:
-            sysbench_pid = utility.sysbech_node_pid(node.get_node_number())
+            sysbench_pid = utility.sysbench_pid(node)
             utility_cmd.kill_process(sysbench_pid, "sysbench", True)
             pxc_startup.StartCluster.upgrade_pxc_node(node, debug)
         time.sleep(10)
         utility_cmd.replication_io_status(self.node3, high_version_num)
         utility_cmd.replication_sql_status(self.node3, high_version_num)
-        sysbench_node = sysbench_run.SysbenchRun(self.node1, debug)
+        sysbench_node = sysbench_run.SysbenchRun(self.node1, debug, workdir)
         sysbench_node.test_sysbench_oltp_read_write('sbtest', SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS,
                                                     SYSBENCH_NORMAL_TABLE_SIZE, 100)
         time.sleep(15)
