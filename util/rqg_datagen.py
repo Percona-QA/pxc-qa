@@ -1,6 +1,7 @@
 import os
 import subprocess
 import configparser
+from config import *
 from util import utility
 from util.db_connection import DbConnection
 
@@ -8,7 +9,7 @@ from util.db_connection import DbConnection
 config = configparser.ConfigParser()
 script_dir = os.path.dirname(os.path.realpath(__file__))
 parent_dir = os.path.normpath(os.path.join(script_dir, '../'))
-rand_gen_dir = parent_dir + '/randgen'
+rand_gen_dir = RQG_DIR
 gen_data_pl = rand_gen_dir + '/gendata.pl'
 
 RQG_RUN_TIMEOUT = 60 * 60

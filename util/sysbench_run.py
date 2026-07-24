@@ -14,11 +14,11 @@ from util import utility
 
 SYSBENCH_DB_CONNECT = " --mysql-user=" + SYSBENCH_USER + \
                       " --mysql-password=" + SYSBENCH_PASS + " --db-driver=mysql "
-EXPORT_LUA_PATH = 'export SBTEST_SCRIPTDIR="' + parent_dir + \
-                  '/sysbench_lua"; export LUA_PATH="' + parent_dir + \
-                  '/sysbench_lua/?;' + parent_dir + '/sysbench_lua/?.lua"'
+EXPORT_LUA_PATH = 'export SBTEST_SCRIPTDIR="' + SYSBENCH_DIR + \
+                  '"; export LUA_PATH="' + SYSBENCH_DIR + \
+                  '/?.lua;' + SYSBENCH_DIR + '/?.lua"'
 
-lua_dir = parent_dir + "/sysbench_lua/"
+lua_dir = SYSBENCH_DIR + "/"
 
 # Maximum time (in seconds) a single sysbench run is allowed to take.
 SYSBENCH_RUN_TIMEOUT = 50 * 60
@@ -139,9 +139,9 @@ class SysbenchRun:
 
             query = ("sysbench {lua} --table-size={table-size} --tables={tables} --threads={threads} --mysql-db={db} "
                      "--mysql-user={user} --mysql-password={password} --db-driver=mysql "
-                     "--mysql-socket={socket} --rand_type={rand_type} --db-ps-mode=disable "
-                     "--delete_inserts={delete_inserts} --index_updates={index_updates} "
-                     "--time={time} --non_index_updates={non_index_updates} run > {log-file}").format(**params)
+                     "--mysql-socket={socket} --rand-type={rand_type} --db-ps-mode=disable "
+                     "--delete-inserts={delete_inserts} --index-updates={index_updates} "
+                     "--time={time} --non-index-updates={non_index_updates} run > {log-file}").format(**params)
 
             combination = "rand_type:" + rand_type + \
                           ", delete_inserts:" + str(delete_insert) + \
@@ -178,8 +178,8 @@ class SysbenchRun:
 
             query = ("sysbench {lua} --table-size={table-size} --tables={tables} --threads={threads} --mysql-db={db} "
                      "--mysql-user={user} --mysql-password={password} --db-driver=mysql "
-                     "--mysql-socket={socket} --distinct_ranges={distinct_ranges} --sum_ranges={sum_ranges} "
-                     "--simple_ranges={simple_ranges} --order_ranges={order_ranges} --point_selects={point_selects} "
+                     "--mysql-socket={socket} --distinct-ranges={distinct_ranges} --sum-ranges={sum_ranges} "
+                     "--simple-ranges={simple_ranges} --order-ranges={order_ranges} --point-selects={point_selects} "
                      "--time={time}  run > {log-file}").format(**params)
 
             combination = "distinct_rng:" + params['distinct_ranges'] + \
@@ -275,7 +275,7 @@ class SysbenchRun:
         table_format = ['DEFAULT', 'DYNAMIC', 'FIXED', 'COMPRESSED', 'REDUNDANT', 'COMPACT']
         # table_compression = ['ZLIB', 'LZ4', 'NONE']
         if not os.path.exists(lua_dir):
-            print("ERROR!: Cannot access 'sysbench_lua': No such directory")
+            print("ERROR!: Cannot access '" + lua_dir + "': No such directory")
             exit(1)
         for tbl_format in table_format:
             queries = ["drop database if exists " + db + "_" + tbl_format,
