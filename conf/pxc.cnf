@@ -7,4 +7,4 @@ innodb_flush_log_at_trx_commit=0
 wsrep_sst_method=xtrabackup-v2
 core-file
 log-output=none
-wsrep_slave_threads=8
+wsrep_applier_threads=8

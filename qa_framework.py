@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 from config import *
 
 workdir = WORKDIR
@@ -202,8 +203,10 @@ def run_test(test_file, suite_name, encryption, tc_output, debug, worker_id=0):
         cmd = cmd + ' ' + worker_option
     if debug:
         log_output("Running test : " + cmd, tc_output)
+    start_time = time.monotonic()
     result = subprocess.call(cmd, shell=True)
-    return worker_id, suite_name, os.path.basename(test_file), result
+    duration = time.monotonic() - start_time
+    return worker_id, suite_name, os.path.basename(test_file), result, duration
 
 
 def run_worker_tests(worker_id, test_queue, encryption, debug, tc_output, output_lock):
@@ -222,15 +225,23 @@ def run_worker_tests(worker_id, test_queue, encryption, debug, tc_output, output
     return worker_failed
 
 
-def handle_test_result(tc_output, worker_id, suite_name, file, result):
+def format_duration(duration):
+    total_seconds = int(round(duration))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f'{hours:02d}:{minutes:02d}:{seconds:02d}'
+
+
+def handle_test_result(tc_output, worker_id, suite_name, file, result, duration=0):
     worker = ''
     if worker_id > 0:
         worker = 'w' + str(worker_id) + ' '
     test_name = f'{suite_name}.{file}'
+    elapsed = format_duration(duration) + ' '
     if result == 0:
-        output = 'Test ' + f'{test_name:60}' + worker + '[Pass]'
+        output = 'Test ' + f'{test_name:60}' + worker + elapsed + '[Pass]'
     else:
-        output = 'Test ' + f'{test_name:60}' + worker + '[Fail]'
+        output = 'Test ' + f'{test_name:60}' + worker + elapsed + '[Fail]'
     log_output(output, tc_output)
     if result != 0:
         workdir = get_worker_thread_dir(worker_id)
