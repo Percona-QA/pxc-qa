@@ -70,13 +70,14 @@ class SysbenchRun:
                 'user': SYSBENCH_USER,
                 'password': SYSBENCH_PASS}
 
-    def sysbench_load(self, db, tables, threads, table_size):
+    def sysbench_load(self, db, tables, threads, table_size, extra_options: str = ""):
         params = self.get_params("oltp_insert.lua", table_size, tables, threads,
                                  db, "sysbench_prepare.log")
+        params['extra_options'] = extra_options
 
         query = ("sysbench {lua} --table-size={table-size} --tables={tables} --threads={threads} --mysql-db={db} "
                  "--mysql-user={user} --mysql-password={password} --db-driver=mysql "
-                 "--mysql-socket={socket} prepare > {log-file}").format(**params)
+                 "--mysql-socket={socket} {extra_options} prepare > {log-file}").format(**params)
 
         return self.execute_sysbench_query(query)
 
@@ -282,23 +283,11 @@ class SysbenchRun:
                        "create database " + db + "_" + tbl_format]
             self.__node.execute_queries(queries)
 
-            row_format_option = 'sed -i ' \
-                                "'s#mysql_table_options = " \
-                                '.*."#mysql_table_options = "row_format=' + \
-                                tbl_format + '"#g' + "' " + lua_dir + \
-                                'oltp_custom_common.lua'
-            if self.__debug == 'YES':
-                print(row_format_option)
-            os.system(row_format_option)
-            self.sysbench_load(db + "_" + tbl_format, table_count, thread, table_size)
-        row_format_option = 'sed -i ' \
-                            "'s#mysql_table_options = " \
-                            '.*."#mysql_table_options = "' + \
-                            '"#g' + "' " + lua_dir + \
-                            'oltp_custom_common.lua'
-        if self.__debug == 'YES':
-            print(row_format_option)
-        os.system(row_format_option)
+            # oltp_common.lua appends --create_table_options verbatim to the CREATE TABLE
+            # statement, so we can select the row format per run without editing the lua file.
+            create_table_options = "--create_table_options=\"row_format=" + tbl_format + "\""
+            self.sysbench_load(db + "_" + tbl_format, table_count, thread, table_size,
+                               extra_options=create_table_options)
         return 0
 
     def test_sysbench_custom_table(self, db, table_count=SYSBENCH_TABLE_COUNT, thread=SYSBENCH_THREADS,

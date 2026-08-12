@@ -373,7 +373,8 @@ class Utility:
                       socket + " --seed " + str(seed) + " --tables " + str(tables) + " " + \
                       pstress_extra + " --seconds " + str(timeout) + " --grammar-file " + \
                       config.PSTRESS_GRAMMAR_FILE + extra_setting + " > " + \
-                      workdir + "/log/pstress_run.log"
+                      workdir + "/log/pstress_run.log" + " 2>&1"
+
         self.check_testcase(0, "PSTRESS RUN command : " + pstress_cmd)
         is_terminate : bool = True
         process = subprocess.Popen(pstress_cmd, shell=True, start_new_session=True)
