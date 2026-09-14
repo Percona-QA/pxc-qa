@@ -64,6 +64,7 @@ class PXCUpgrade(BaseTest):
             utility_cmd.kill_process(sysbench_pid, "sysbench", True)
             pxc_startup.StartCluster.upgrade_pxc_node(node, debug)
         time.sleep(10)
+        utility_cmd.ensure_replica_running(self.node3)
         utility_cmd.replication_io_status(self.node3, high_version_num)
         utility_cmd.replication_sql_status(self.node3, high_version_num)
         sysbench_node = sysbench_run.SysbenchRun(self.node1, debug, workdir)
@@ -83,6 +84,9 @@ class PXCUpgrade(BaseTest):
 utility.test_header("PXC Asyc non-gtid replication upgrade test : Upgrading from PXC-" + lower_version +
                     " to PXC-" + upper_version)
 upgrade_qa = PXCUpgrade()
+upgrade_qa.skip_if_wsrep_cluster(
+    "replication channel metadata isn't getting carried over when migrating a mysql-wsrep/Galera source "
+    "in-place to Percona XtraDB Cluster")
 upgrade_qa.set_extra_conf_file(get_rpl_conf(utility.RplType.GTID_LESS))
 upgrade_qa.start_pxc()
 saved_number_of_nodes = upgrade_qa.get_number_of_nodes()
