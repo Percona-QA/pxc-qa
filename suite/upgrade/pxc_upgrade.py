@@ -65,7 +65,7 @@ class PXCUpgrade(BaseTest):
                 node_to_add_load = None
             cnf_replace = {"wsrep_slave_threads": "30"}
             if 'readwrite' in upgrade_type:
-                pxc_startup.StartCluster.upgrade_pxc_node(node, debug, node_to_add_load, cnf_replace, 600)
+                pxc_startup.StartCluster.upgrade_pxc_node(node, debug, node_to_add_load, cnf_replace, 1500)
             else:
                 pxc_startup.StartCluster.upgrade_pxc_node(node, debug, node_to_add_load, cnf_replace)
         time.sleep(60)

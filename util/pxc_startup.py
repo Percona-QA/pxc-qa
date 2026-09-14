@@ -29,7 +29,7 @@ ps_node_keyring_file_name = 'psnode' + '{node_number}' + '_' + comp_name
 
 higher_version_basedir = PXC_UPPER_BASE
 lower_base_dir = PXC_LOWER_BASE
-DEFAULT_SERVER_UP_TIMEOUT = 300
+DEFAULT_SERVER_UP_TIMEOUT = 600
 
 cwd = os.path.dirname(os.path.realpath(__file__))
 parent_dir = os.path.normpath(os.path.join(cwd, '../'))
@@ -133,7 +133,8 @@ def setup_local_keyring(worker_id: int, node_number: int):
 
 
 class StartCluster:
-    def __init__(self, number_of_nodes, debug, server_version: Version = None, worker_id: int = 0):
+    def __init__(self, number_of_nodes, debug, server_version: Version = None, worker_id: int = 0,
+                 is_wsrep_cluster: bool = False):
         self.__number_of_nodes = int(number_of_nodes)
         self.__debug = debug
         self.__worker_id = worker_id
@@ -142,6 +143,7 @@ class StartCluster:
             os.mkdir(self.__workdir)
         if Version is not None:
             set_base_dir(server_version)
+        self.__is_wsrep_cluster = is_wsrep_cluster
         self.__workdir_custom_cnf = os.path.join(self.__workdir, 'conf', 'custom.cnf')
         self.__workdir_encryption_cnf = os.path.join(self.__workdir, 'conf', 'encryption.cnf')
 
@@ -253,14 +255,18 @@ class StartCluster:
             if default_encryption_conf:
                 if wsrep_extra == 'encryption':
                     cnf_name.write('!include ' + self.__workdir_encryption_cnf + '\n')
-                    cnf_name.write('pxc_encrypt_cluster_traffic = ON\n')
-                elif int(version) > int("050700"):
+                    if not self.__is_wsrep_cluster:
+                        cnf_name.write('pxc_encrypt_cluster_traffic = ON\n')
+                elif int(version) > int("050700") and not self.__is_wsrep_cluster:
                     cnf_name.write('pxc_encrypt_cluster_traffic = OFF\n')
             if admin_port is not None:
                 cnf_name.write('admin_address=127.0.0.1\n')
                 cnf_name.write('admin_port=' + str(admin_port) + '\n')
+            cnf_name.write('[sst]\n')
+            if self.__is_wsrep_cluster:
+                cnf_name.write('encrypt=0\n')
             if self.__worker_id > 0:
-                cnf_name.write('[sst]\ndonor_timeout_wait_joiner=400\n')
+                cnf_name.write('donor_timeout_wait_joiner=400\n')
             cnf_name.close()
         if custom_conf_settings is not None:
             self.add_conf(custom_conf_settings)
@@ -372,7 +378,8 @@ class StartCluster:
             utility_cmd = utility.Utility(self.__debug)
             node = db_connection.DbConnection(user=user, socket=socket, node_num=i, data_dir=datadir, conf_file=conf,
                                               err_log=err_log, base_dir=base_dir, startup_script=startup_script,
-                                              debug=self.__debug, worker_id=self.__worker_id)
+                                              debug=self.__debug, worker_id=self.__worker_id,
+                                              is_wsrep_cluster=self.__is_wsrep_cluster)
             result = utility_cmd.startup_check(node, terminate_on_startup_failure)
             pxc_nodes.append(node)
         if result != 0:
@@ -381,7 +388,8 @@ class StartCluster:
 
     @staticmethod
     def join_new_node(donor: DbConnection, joiner_node_number: int, basedir: str = base_dir, debug: str = 'NO', encryption: bool = False):
-        worker_id = donor.get_worker_id()   
+        is_source_wsrep_cluster = donor.is_wsrep_cluster()
+        worker_id = donor.get_worker_id()
         joiner_node_cnf = node_conf(worker_id, joiner_node_number)
         startup_script = node_startup_script(worker_id, joiner_node_number)
         joiner_data_dir = node_datadir(worker_id, joiner_node_number)
@@ -418,7 +426,16 @@ class StartCluster:
         os.system("sed -i  '0,/^[ \\t]*server_id[ \\t]*=.*$/s|"
                   "^[ \\t]*server_id[ \\t]*=.*$|server_id="
                   "14|' " + joiner_node_cnf)
-
+        if is_source_wsrep_cluster and int(utility.Utility.version_check(basedir)) > int("050700"):
+            cmd = (
+                "sed -i '/^[[:space:]]*wsrep_sst_method.*/a\\\n"
+                "pxc_encrypt_cluster_traffic = OFF' "
+                + joiner_node_cnf
+            )
+            ret = os.system(cmd)
+            if ret != 0:
+                print(f"Failed to add pxc_encrypt_cluster_traffic option to {joiner_node_cnf}")
+                exit(1)
         create_upgrade_startup = (
                 'sed  "s#' + lower_base_dir + '#' + basedir + '#g" ' + donor.get_startup_script() +
                 ' > ' + startup_script)
@@ -436,7 +453,8 @@ class StartCluster:
         joiner = db_connection.DbConnection(user=user, socket=node_socket(worker_id, joiner_node_number),
                                             node_num=joiner_node_number, data_dir=joiner_data_dir,
                                             conf_file=joiner_node_cnf, err_log=node_err_log(worker_id, joiner_node_number),
-                                            base_dir=base_dir, startup_script=startup_script, debug=debug, worker_id=worker_id)
+                                            base_dir=base_dir, startup_script=startup_script, debug=debug, worker_id=worker_id,
+                                            is_wsrep_cluster=utility.is_wsrep_cluster_build(basedir))
         utility_cmd = utility.Utility(debug)
         utility_cmd.restart_cluster_node(joiner)
         utility_cmd.startup_check(joiner)
@@ -451,8 +469,21 @@ class StartCluster:
     @staticmethod
     def upgrade_pxc_node(node: DbConnection, debug, node_to_add_load: DbConnection = None, config_replace: dict = None,
                          node_sync_timeout: int = DEFAULT_SERVER_UP_TIMEOUT):
+        is_source_wsrep_cluster = node.is_wsrep_cluster()
+        node_port = node.get_port()
+        pid_file = node.execute_get_value("select @@pid_file")
         node.shutdown()
-        time.sleep(60)
+        if not utility.wait_for_port_free(node_port, timeout=90):
+            print("Port " + str(node_port) + " for cluster node" + str(node.get_node_number()) +
+                 " still in use " + str(90) + "s after shutdown; forcing termination via pid file " + pid_file)
+            pid = os.popen('cat ' + pid_file + ' 2>/dev/null').read().strip()
+            if pid:
+                os.system('kill -9 ' + pid + ' >/dev/null 2>&1')
+            if not utility.wait_for_port_free(node_port, timeout=30):
+                print("Port " + str(node_port) + " for cluster node" + str(node.get_node_number()) +
+                     " still in use after forced termination; proceeding anyway")
+        else:
+            time.sleep(5)
 
         if node_to_add_load is not None:
             sysbench = sysbench_run.SysbenchRun(node_to_add_load, debug,
@@ -469,21 +500,34 @@ class StartCluster:
 
         utility_cmd = utility.Utility(debug)
         version = utility_cmd.version_check(PXC_UPPER_BASE)
+        node_cnf = node.get_conf_file()
+        if is_source_wsrep_cluster:
+            cmd = (
+                "sed -i '/^[[:space:]]*wsrep_sst_method.*/a\\\n"
+                "pxc_encrypt_cluster_traffic = OFF' "
+                + node_cnf
+            )
+            ret = os.system(cmd)
+            if ret != 0:
+                print(f"Failed to add pxc_encrypt_cluster_traffic option to {node_cnf}")
+                exit(1)
         if int(version) > int("080000"):
-            os.system("sed -i '/wsrep_sst_auth=root:/d' " + node.get_conf_file())
+            os.system("sed -i '/wsrep_sst_auth=root:/d' " + node_cnf)
             if config_replace is not None:
                 for cnf in config_replace:
                     os.system("sed -i 's#" + cnf + "=.*#" + cnf + "=" + config_replace[cnf] + "#g' " +
-                              node.get_conf_file())
-            startup_cmd = (higher_version_basedir + '/bin/mysqld --defaults-file=' + node.get_conf_file() +
+                              node_cnf)
+
+            startup_cmd = (higher_version_basedir + '/bin/mysqld --defaults-file=' + node_cnf +
                            ' --wsrep-provider=' + higher_version_basedir + '/lib/libgalera_smm.so --datadir='
                            + node.get_data_dir() + ' --basedir=' + higher_version_basedir + ' --log-error=' +
                            node.get_error_log() + ' >> ' + node.get_error_log() + ' 2>&1')
             utility_cmd.check_testcase(0, "Starting cluster node with upgraded version")
         else:
-            startup_cmd = (higher_version_basedir + '/bin/mysqld --defaults-file=' + node.get_conf_file() +
+            startup_cmd = (higher_version_basedir + '/bin/mysqld --defaults-file=' + node_cnf +
                            ' --datadir=' + node.get_data_dir() + ' --basedir=' + higher_version_basedir +
-                           ' --wsrep-provider=none --log-error=' + node.get_error_log() +
+                           ' --wsrep-provider=' + (higher_version_basedir + '/lib/libgalera_smm.so' if is_source_wsrep_cluster else 'none') +
+                           ' --log-error=' + node.get_error_log() +
                            ' >> ' + node.get_error_log() + ' 2>&1')
         if debug == 'YES':
             print(startup_cmd)
@@ -494,6 +538,7 @@ class StartCluster:
             utility_cmd.check_testcase(launch_result, "Starting cluster node with upgraded version")
             return
         utility_cmd.startup_check(node)
+        node.set_is_wsrep_cluster(utility.is_wsrep_cluster_build(higher_version_basedir))
         utility_cmd.wait_for_wsrep_status(node, node_sync_timeout)
         if int(version) < int("080000"):
             upgrade_cmd = (higher_version_basedir + '/bin/mysql_upgrade -uroot --socket=' + node.get_socket() + ' > '
