@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import re
 import signal
 import socket
 import subprocess
@@ -10,7 +11,7 @@ from enum import Enum
 from pathlib import Path
 
 import config
-from util.db_connection import DbConnection
+from util.db_connection import DbConnection, QueryExecutionError
 
 pstress_bin = config.PSTRESS_BIN
 
@@ -48,9 +49,33 @@ PS_PORT_SUB_BASE = 600
 
 
 def is_port_busy(port):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.settimeout(1)
-        return sock.connect_ex(('127.0.0.1', port)) == 0
+    # mysqld's default bind-address ('*') listens on the IPv6 wildcard ('::').
+    # Whether that also accepts IPv4 connections depends on the host's
+    # net.ipv6.bindv6only setting, so probe both families rather than
+    # assuming a v4 probe against 127.0.0.1 will always see a v6-only listener.
+    for family, addr in ((socket.AF_INET, '127.0.0.1'), (socket.AF_INET6, '::1')):
+        try:
+            with socket.socket(family, socket.SOCK_STREAM) as sock:
+                sock.settimeout(1)
+                if sock.connect_ex((addr, port)) == 0:
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+def wait_for_port_free(port: int, timeout: int = 120) -> bool:
+    """Poll until nothing is listening on `port`, or timeout elapses.
+
+    Used after shutting down a node so a subsequent mysqld start (e.g.
+    during an in-place upgrade) doesn't race a not-yet-released port.
+    """
+    deadline = time.time() + timeout
+    while is_port_busy(port):
+        if time.time() > deadline:
+            return False
+        time.sleep(1)
+    return True
 
 
 def find_available_ports(start, end, count):
@@ -109,6 +134,18 @@ def get_mysql_version(basedir: str):
     return os.popen(query).read().rstrip()
 
 
+WSREP_CLUSTER_VERSION_PATTERN = re.compile(r'galera.*cluster.*mysql', re.IGNORECASE)
+
+
+def is_wsrep_cluster_build(basedir: str) -> bool:
+    """ Detect a plain MySQL wsrep/Galera Cluster build (as opposed to
+        Percona XtraDB Cluster) by inspecting `mysqld --version` output,
+        e.g. "... (Galera Cluster for MySQL)".
+    """
+    version_output = os.popen(basedir + "/bin/mysqld --version 2>&1").read()
+    return bool(WSREP_CLUSTER_VERSION_PATTERN.search(version_output))
+
+
 class Version(Enum):
     LOWER = 1
     HIGHER = 2
@@ -164,6 +201,22 @@ class Utility:
                 result = 1
         self.check_testcase(result, "Checksum run for DB: " + db)
 
+    def ensure_replica_running(self, node: DbConnection, channel: str = ''):
+        """ Explicitly (re)start replication threads for a channel.
+
+            A replica isn't guaranteed to auto-start its threads on boot
+            (e.g. after an in-place upgrade that swaps to a different
+            mysqld build sharing the same datadir), so this is used as a
+            safety net/diagnostic after a node restart.
+        """
+        if channel == 'none':
+            channel = ""
+        start_cmd = "START REPLICA" if channel == "" else "START REPLICA FOR CHANNEL '" + channel + "'"
+        try:
+            node.execute(start_cmd)
+        except QueryExecutionError as start_error:
+            print("START REPLICA for channel '" + channel + "' reported: " + str(start_error))
+
     def replication_io_status(self, node: DbConnection, version: str, channel: str = ''):
         """ This will check replication IO thread
             running status
@@ -175,9 +228,12 @@ class Utility:
         if int(version) < int("050700"):
             replica_status = node.get_column_value("SHOW SLAVE STATUS", "Slave_IO_Running")
         else:
-            replica_status = node.execute_get_value("SELECT SERVICE_STATE FROM "
-                                                    "performance_schema.replication_connection_status where "
-                                                    "channel_name='" + channel + "'")
+            # Retry: after a node restart the replica threads may take a
+            # few seconds to reconnect, so an empty result isn't
+            # necessarily a failure yet.
+            replica_status = node.execute_get_value(
+                "SELECT SERVICE_STATE FROM performance_schema.replication_connection_status "
+                "where channel_name='" + channel + "'", retries=6, retry_wait=10)
         if replica_status not in ['ON', 'Yes']:
             if int(version) >= int("050700"):
                 status = node.execute_get_values("SELECT * FROM performance_schema.replication_connection_status where channel_name='" + channel + "'")
@@ -197,9 +253,9 @@ class Utility:
         if int(version) < int("050700"):
             replica_status = node.get_column_value("SHOW SLAVE STATUS", "Slave_SQL_Running")
         else:
-            replica_status = node.execute_get_value("SELECT SERVICE_STATE FROM "
-                                                    "performance_schema.replication_applier_status where "
-                                                    "channel_name='" + channel + "'")
+            replica_status = node.execute_get_value(
+                "SELECT SERVICE_STATE FROM performance_schema.replication_applier_status "
+                "where channel_name='" + channel + "'", retries=6, retry_wait=10)
         if replica_status not in ['YES', 'ON']:
             if int(version) >= int("050700"):
                 status = node.execute_get_values("SELECT * FROM performance_schema.replication_applier_status_by_worker where channel_name='" + channel + "'")

@@ -1,3 +1,4 @@
+import time
 from datetime import datetime
 
 import mysql.connector
@@ -27,7 +28,8 @@ class QueryTimeoutError(Exception):
 
 class DbConnection:
     def __init__(self, user, password=None, host='localhost', port=None, socket=None, node_num: int = 1, data_dir=None,
-                 conf_file=None, err_log=None, base_dir=None, startup_script=None, debug='No', worker_id: int = 0):
+                 conf_file=None, err_log=None, base_dir=None, startup_script=None, debug='No', worker_id: int = 0,
+                 is_wsrep_cluster: bool = False):
         self.__user = user
         self.__socket = socket
         self.__data_dir = data_dir
@@ -41,6 +43,7 @@ class DbConnection:
         self.__port = port
         self.__password = password
         self.__worker_id = worker_id
+        self.__is_wsrep_cluster = is_wsrep_cluster
 
     def connect(self, query_timeout: int = QUERY_TIMEOUT):
         connect_kwargs = {
@@ -73,7 +76,7 @@ class DbConnection:
                 "Error while executing query: " + str(query) + " :: " + str(query_error)
             ) from query_error
 
-    def connection_check(self, log_error_on_failure: bool = True):
+    def connection_check(self, log_error_on_failure: bool = True, retries: int = 0, retry_wait: int = 2):
         """ Method to test the cluster database connection.
         """
         connection = None
@@ -83,6 +86,11 @@ class DbConnection:
             if connection.is_connected():
                 return 0
         except Exception as mysql_connection_error:
+            if retries > 0:
+                print("Transient error while opening connection to server " + str(mysql_connection_error) +
+                     "; retrying in " + str(retry_wait) + "s, remaining retries: " + str(retries))
+                time.sleep(retry_wait)
+                return self.connection_check(log_error_on_failure, retries - 1, retry_wait)
             if log_error_on_failure:
                 print("Error while opening connection to server " + str(mysql_connection_error))
             return 1
@@ -92,7 +100,7 @@ class DbConnection:
                 connection.close()
 
     def test_connection_check(self):
-        result = self.connection_check()
+        result = self.connection_check(retries=5, retry_wait=2)
         # print testcase status based on success/failure output.
         now = datetime.now().strftime("%H:%M:%S ")
         if result == 0:
@@ -137,20 +145,30 @@ class DbConnection:
             if cnx is not None and cnx.is_connected():
                 cnx.close()
 
-    def execute_get_value(self, query: str, retries: int = 0):
+    def execute_get_value(self, query: str, retries: int = 0, retry_wait: int = 5):
         cnx = None
         try:
             cnx = self.connect()
             cursor = cnx.cursor(buffered=True)
             self._execute(cursor, query)
             row = cursor.fetchone()
+            if row is None:
+                if retries > 0:
+                    print("Query returned no rows, retrying in " + str(retry_wait) +
+                         "s, remaining retries: " + str(retries) + " (" + query + ")")
+                    if cnx is not None and cnx.is_connected():
+                        cnx.close()
+                        cnx = None
+                    time.sleep(retry_wait)
+                    return self.execute_get_value(query, int(retries - 1), retry_wait)
+                raise QueryExecutionError("Query returned no rows: " + query)
             if self.__debug == 'YES':
                 print(row[0])
             return row[0]
         except QueryExecutionError as query_error:
             if isinstance(query_error.__cause__, MySQLInterfaceError) and retries > 0:
                 print("Retrying, left number of retries" + str(retries))
-                return self.execute_get_value(query, int(retries - 1))
+                return self.execute_get_value(query, int(retries - 1), retry_wait)
             raise
         finally:
             # closing database connection.
@@ -325,4 +343,13 @@ class DbConnection:
         
     def get_worker_id(self):
         return self.__worker_id
+
+    def is_wsrep_cluster(self):
+        """ Whether this node was started from a plain MySQL wsrep/Galera
+            build, as opposed to Percona XtraDB Cluster.
+        """
+        return self.__is_wsrep_cluster
+
+    def set_is_wsrep_cluster(self, is_wsrep_cluster: bool):
+        self.__is_wsrep_cluster = is_wsrep_cluster
 

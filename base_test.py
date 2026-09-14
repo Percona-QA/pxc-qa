@@ -5,7 +5,7 @@ import os
 import re
 import sys
 
-from config import WORKDIR, NODE, PT_BASEDIR, BASEDIR, SERVER, PXC_LOWER_BASE, PXC_UPPER_BASE
+from config import WORKDIR, NODE, PT_BASEDIR, BASEDIR, SERVER, PXC_LOWER_BASE, PXC_UPPER_BASE, SKIP_TEST_EXIT_CODE
 from util import pxc_startup, ps_startup
 from util.utility import *
 
@@ -90,6 +90,13 @@ class BaseTest:
         self.node3: DbConnection = None
         self.ps_nodes: list[DbConnection] = None
         self._shutdown_registered = False
+        if vers == Version.LOWER:
+            server_basedir = PXC_LOWER_BASE
+        elif vers == Version.HIGHER:
+            server_basedir = PXC_UPPER_BASE
+        else:
+            server_basedir = BASEDIR
+        self.is_wsrep_cluster = is_wsrep_cluster_build(server_basedir)
 
     def _register_shutdown_on_exit(self):
         if not self._shutdown_registered:
@@ -110,7 +117,8 @@ class BaseTest:
             my_extra_options = self.__my_extra
 
         # Start PXC cluster
-        server_startup = pxc_startup.StartCluster(self.__number_of_nodes, debug, self.__version, worker_id)
+        server_startup = pxc_startup.StartCluster(self.__number_of_nodes, debug, self.__version, worker_id,
+                                                  is_wsrep_cluster=self.is_wsrep_cluster)
         server_startup.sanity_check()
         if encryption or self.encrypt:
             server_startup.create_config('encryption', self.__wsrep_provider_options,
@@ -179,3 +187,16 @@ class BaseTest:
 
     def get_number_of_nodes(self):
         return self.__number_of_nodes
+
+    def skip_if_wsrep_cluster(self, reason: str = None):
+        """ Skip when this test's source build is a plain MySQL
+            wsrep/Galera Cluster build rather than PXC. Exits with
+            SKIP_TEST_EXIT_CODE so the test runner reports [Skipped]
+            instead of [Pass]/[Fail].
+        """
+        if self.is_wsrep_cluster:
+            message = "Skipping test: source build is a MySQL wsrep/Galera Cluster build, not PXC"
+            if reason:
+                message += " - " + reason
+            print(message)
+            exit(SKIP_TEST_EXIT_CODE)
