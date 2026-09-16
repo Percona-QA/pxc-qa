@@ -29,3 +29,8 @@ SYSBENCH_CUSTOMIZED_DATALOAD_TABLE_SIZE = config['sysbench']['sysbench_customize
 RQG_DIR = config['config']['randgen_dir']
 PXC_LOWER_BASE = config['upgrade']['pxc_lower_base']
 PXC_UPPER_BASE = config['upgrade']['pxc_upper_base']
+
+# Exit code a test uses to report that it was intentionally skipped
+# (e.g. a scenario that doesn't apply to the current server build),
+# as opposed to passing (0) or failing (any other non-zero code).
+SKIP_TEST_EXIT_CODE = 77

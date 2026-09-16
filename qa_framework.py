@@ -240,15 +240,17 @@ def handle_test_result(tc_output, worker_id, suite_name, file, result, duration=
     elapsed = format_duration(duration) + ' '
     if result == 0:
         output = 'Test ' + f'{test_name:60}' + worker + elapsed + '[Pass]'
+    elif result == SKIP_TEST_EXIT_CODE:
+        output = 'Test ' + f'{test_name:60}' + worker + elapsed + '[Skipped]'
     else:
         output = 'Test ' + f'{test_name:60}' + worker + elapsed + '[Fail]'
     log_output(output, tc_output)
-    if result != 0:
+    if result != 0 and result != SKIP_TEST_EXIT_CODE:
         workdir = get_worker_thread_dir(worker_id)
         print_failed_test_log(tc_output, workdir, file)
         os.system('tar -czf ' + workdir + '/failed_logs/' + suite_name + '_' +
                   file + '.tar.gz ' + workdir + '/log/*')
-    return result != 0
+    return result != 0 and result != SKIP_TEST_EXIT_CODE
 
 
 def print_failed_test_log(tc_output, workdir, file, num_lines=10):
