@@ -191,7 +191,7 @@ def get_worker_thread_dir(worker_id=0):
 
 
 def run_test(test_file, suite_name, encryption, tc_output, debug, worker_id=0):
-    cmd = test_file
+    cmd = sys.executable + ' ' + test_file
     if encryption:
         cmd = cmd + ' -e'
     if debug:

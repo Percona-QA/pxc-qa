@@ -178,13 +178,15 @@ class Utility:
 
     @staticmethod
     def version_check(basedir: str):
-        # Get database version number
+        # Get database version number. Returns "" when basedir doesn't
+        # point to a valid mysqld binary, instead of raising, so callers
+        # that don't actually need this basedir aren't affected.
         version_info = os.popen(basedir + "/bin/mysqld --version 2>&1 "
-                                          "| grep -oe '[0-9]\.[0-9][\.0-9]*' | head -n1").read()
-        version = "{:02d}{:02d}{:02d}".format(int(version_info.split('.')[0]),
-                                              int(version_info.split('.')[1]),
-                                              int(version_info.split('.')[2]))
-        return version
+                                          "| grep -oe '[0-9]\.[0-9][\.0-9]*' | head -n1").read().strip()
+        parts = version_info.split('.')
+        if len(parts) < 3 or not all(part.isdigit() for part in parts[:3]):
+            return ""
+        return "{:02d}{:02d}{:02d}".format(int(parts[0]), int(parts[1]), int(parts[2]))
 
     def test_table_count(self, node1: DbConnection, node2: DbConnection, db):
         """ This method will compare the table

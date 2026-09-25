@@ -96,7 +96,28 @@ class BaseTest:
             server_basedir = PXC_UPPER_BASE
         else:
             server_basedir = BASEDIR
+        if vers in (Version.LOWER, Version.HIGHER):
+            self.ensure_upgrade_basedirs_configured()
+        else:
+            self._ensure_basedir_configured("basedir", BASEDIR)
         self.is_wsrep_cluster = is_wsrep_cluster_build(server_basedir)
+
+    @staticmethod
+    def _ensure_basedir_configured(label: str, basedir: str):
+        if not os.path.isfile(os.path.join(basedir, 'bin', 'mysqld')):
+            print(label + " (" + basedir + ") does not point to a valid mysqld binary; "
+                 "check the corresponding path in config.ini")
+            exit(1)
+
+    @classmethod
+    def ensure_upgrade_basedirs_configured(cls):
+        """ Upgrade tests need both pxc_lower_base and pxc_upper_base
+            (config.ini) to point to a valid mysqld binary, regardless of
+            which one this test instance starts from - one is the
+            upgrade source, the other the target.
+        """
+        cls._ensure_basedir_configured("pxc_lower_base", PXC_LOWER_BASE)
+        cls._ensure_basedir_configured("pxc_upper_base", PXC_UPPER_BASE)
 
     def _register_shutdown_on_exit(self):
         if not self._shutdown_registered:
