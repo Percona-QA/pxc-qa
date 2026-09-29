@@ -20,6 +20,13 @@ EXPORT_LUA_PATH = 'export SBTEST_SCRIPTDIR="' + SYSBENCH_DIR + \
 
 lua_dir = SYSBENCH_DIR + "/"
 
+# Errors for sysbench --mysql-ignore-errors when several nodes write to the same tables
+# at once: sysbench's defaults (1213 deadlock, 1020 record changed, 1205 lock wait
+# timeout) plus 1180, the certification conflict Galera reports at COMMIT
+# ("Got error 149 - 'Lock deadlock; Retry transaction' during COMMIT"). Ignored errors
+# are counted by sysbench and the event is retried, instead of the thread failing.
+GALERA_WRITE_CONFLICT_ERRORS = "1213,1020,1205,1180"
+
 # Maximum time (in seconds) a single sysbench run is allowed to take.
 SYSBENCH_RUN_TIMEOUT = 50 * 60
 # Seconds to poll after launching background sysbench before treating launch as successful.
@@ -210,7 +217,8 @@ class SysbenchRun:
         result = self.sysbench_cleanup(db, tables, threads, table_size)
         self.__utility_cmd.check_testcase(result, "Sysbench data cleanup (threads : " + str(threads) + ")")
 
-    def sysbench_oltp_read_write(self, db, table_count, threads, table_size, time, background: bool = False, port=None):
+    def sysbench_oltp_read_write(self, db, table_count, threads, table_size, time, background: bool = False, port=None,
+                                 ignore_errors: str = None):
         log_file = "sysbench_read_write_" + str(threads) + ".log"
 
         if port is not None:
@@ -218,22 +226,30 @@ class SysbenchRun:
         else:
             host_to_connect = " --mysql-socket=" + self.__node.get_socket()
 
+        # None keeps sysbench's default --mysql-ignore-errors list
+        ignore_errors_option = ""
+        if ignore_errors is not None:
+            ignore_errors_option = " --mysql-ignore-errors=" + ignore_errors
+
         params = self.get_params('oltp_read_write.lua', table_size, table_count, threads,
                                  db, log_file)
         params['time'] = str(time)
 
         query = ("sysbench {lua} --table-size={table-size} --tables={tables} --threads={threads} --mysql-db={db} "
                  "--mysql-user={user} --mysql-password={password} --db-driver=mysql " + host_to_connect +
+                 ignore_errors_option +
                  " --time={time} --db-ps-mode=disable run > {log-file}").format(**params)
 
         return self.execute_sysbench_query(query, background=background)
 
     def test_sysbench_oltp_read_write(self, db, tables=SYSBENCH_TABLE_COUNT, threads=SYSBENCH_THREADS,
                                       table_size=SYSBENCH_NORMAL_TABLE_SIZE, time=SYSBENCH_RUN_TIME,
-                                      background=False, port=None, is_terminate=True, use_load_table_size=False):
+                                      background=False, port=None, is_terminate=True, use_load_table_size=False,
+                                      ignore_errors: str = None):
         if use_load_table_size:
             table_size = SYSBENCH_LOAD_TEST_TABLE_SIZE
-        result = self.sysbench_oltp_read_write(db, tables, threads, table_size, time, background, port)
+        result = self.sysbench_oltp_read_write(db, tables, threads, table_size, time, background, port,
+                                               ignore_errors)
         self.__utility_cmd.check_testcase(result, "Initiated sysbench oltp run", is_terminate)
 
     def sysbench_oltp_read_only(self, db, table_count, threads, table_size, time, background: bool = False):

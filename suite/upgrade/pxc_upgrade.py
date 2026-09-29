@@ -34,12 +34,17 @@ class PXCUpgrade(BaseTest):
         sysbench_node2 = sysbench_run.SysbenchRun(self.node2, debug, workdir)
         sysbench_node3 = sysbench_run.SysbenchRun(self.node3, debug, workdir)
         if upgrade_type == 'readwrite' or upgrade_type == 'readwrite_sst':
+            # All three nodes write to the same tables at once, so certification conflicts are expected.
+            conflict_errors = sysbench_run.GALERA_WRITE_CONFLICT_ERRORS
             sysbench_node1.test_sysbench_oltp_read_write(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS,
-                                                         SYSBENCH_NORMAL_TABLE_SIZE, 1000, True)
+                                                         SYSBENCH_NORMAL_TABLE_SIZE, 1000, True,
+                                                         ignore_errors=conflict_errors)
             sysbench_node2.test_sysbench_oltp_read_write(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS,
-                                                         SYSBENCH_NORMAL_TABLE_SIZE, 1000, True)
+                                                         SYSBENCH_NORMAL_TABLE_SIZE, 1000, True,
+                                                         ignore_errors=conflict_errors)
             sysbench_node3.test_sysbench_oltp_read_write(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS,
-                                                         SYSBENCH_NORMAL_TABLE_SIZE, 1000, True)
+                                                         SYSBENCH_NORMAL_TABLE_SIZE, 1000, True,
+                                                         ignore_errors=conflict_errors)
         elif upgrade_type == 'readonly':
             sysbench_node1.test_sysbench_oltp_read_only(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS,
                                                         SYSBENCH_NORMAL_TABLE_SIZE, 1000, True)

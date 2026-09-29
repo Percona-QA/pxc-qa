@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import atexit
 import os
 import sys
 import itertools
@@ -13,6 +14,41 @@ from util import utility
 from util import table_checksum
 from util import rqg_datagen
 from util import pxc_startup
+
+# initialize_cluster(encryption=True, ...) writes the keyring manifest and config into
+# the shared basedir. Any other test started from that basedir afterwards would load
+# this test's keyring, so qa_framework.py runs this test last and alone, and the files
+# are put back the way this test found them when it exits.
+GLOBAL_KEYRING_FILES = [os.path.join(BASEDIR, 'bin', 'mysqld.my'),
+                        os.path.join(BASEDIR, 'lib', 'plugin', pxc_startup.comp_name + '.cnf')]
+
+
+def snapshot_global_keyring_files():
+    """ Content of each global keyring file, or None if it doesn't exist """
+    saved = {}
+    for path in GLOBAL_KEYRING_FILES:
+        if os.path.isfile(path):
+            with open(path, 'rb') as keyring_file:
+                saved[path] = keyring_file.read()
+        else:
+            saved[path] = None
+    return saved
+
+
+def restore_global_keyring_files(saved):
+    """ Remove the global keyring files this test created and restore
+        any that existed before it started
+    """
+    for path, content in saved.items():
+        try:
+            if content is None:
+                if os.path.exists(path):
+                    os.remove(path)
+            else:
+                with open(path, 'wb') as keyring_file:
+                    keyring_file.write(content)
+        except OSError as error:
+            print("Could not restore " + path + ": " + str(error))
 
 
 class EncryptionTest(BaseTest):
@@ -86,5 +122,7 @@ class EncryptionTest(BaseTest):
 
 
 utility.test_header("PXC Encryption test")
+# Registered before any cluster starts, so it also runs when a check exits early.
+atexit.register(restore_global_keyring_files, snapshot_global_keyring_files())
 encryption_test = EncryptionTest()
 encryption_test.encryption_qa()

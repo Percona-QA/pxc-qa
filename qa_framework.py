@@ -100,23 +100,20 @@ def is_global_manifest_and_config_test(test_run):
     return os.path.basename(test_run[0]) in GLOBAL_MANIFEST_AND_CONFIG_TESTS
 
 
-def filter_global_manifest_and_config_tests(test_runs, tc_output):
-    global_manifest_and_config_runs = [test_run for test_run in test_runs if is_global_manifest_and_config_test(test_run)]
-    if not global_manifest_and_config_runs or len(test_runs) == len(global_manifest_and_config_runs):
-        return test_runs
-    filtered_test_runs = []
-    for test_run in test_runs:
-        if is_global_manifest_and_config_test(test_run):
-            suite_name = test_run[1]
-            test_name = os.path.basename(test_run[0])
-            message = ('Skipping ' + suite_name + '.' + test_name +
-                       ' - cannot run together with other tests in encryption mode '
-                       'as it changes the global keyring file')
+def split_global_manifest_and_config_tests(test_runs, tc_output):
+    """ GLOBAL_MANIFEST_AND_CONFIG_TESTS write the keyring manifest/config files in the
+        shared basedir, which every other test's mysqld would load. They are split off
+        to run last, one at a time, after all other tests have finished.
+    """
+    regular_runs = [test_run for test_run in test_runs if not is_global_manifest_and_config_test(test_run)]
+    deferred_runs = [test_run for test_run in test_runs if is_global_manifest_and_config_test(test_run)]
+    if deferred_runs and regular_runs:
+        for test_run in deferred_runs:
+            message = ('Running ' + test_run[1] + '.' + os.path.basename(test_run[0]) +
+                       ' last and alone - it changes the global keyring files in basedir')
             log_output(message, tc_output)
-            continue
-        filtered_test_runs.append(test_run)
-    log_output("", tc_output)
-    return filtered_test_runs
+        log_output("", tc_output)
+    return regular_runs, deferred_runs
 
 
 def find_test_runs(scriptdir, tests, suites, tc_output):
@@ -308,8 +305,7 @@ def main():
         test_runs.extend(find_test_runs(scriptdir, tests, suites, tc_output))
 
     test_runs = filter_disabled_tests(test_runs, get_disabled_tests(scriptdir), tc_output)
-    if encryption:
-        test_runs = filter_global_manifest_and_config_tests(test_runs, tc_output)
+    regular_runs, deferred_runs = split_global_manifest_and_config_tests(test_runs, tc_output)
 
     if len(test_runs) != 0:
         make_workdir(number_of_workers)
@@ -323,7 +319,7 @@ def main():
     any_failed = False
     if number_of_workers > 0:
         test_queue = queue.Queue()
-        for test_run in test_runs:
+        for test_run in regular_runs:
             test_queue.put(test_run)
         output_lock = threading.Lock()
         with concurrent.futures.ThreadPoolExecutor(max_workers=number_of_workers) as executor:
@@ -333,9 +329,15 @@ def main():
             for future in concurrent.futures.as_completed(futures):
                 any_failed = future.result() or any_failed
     else:
-        for test_run in test_runs:
+        for test_run in regular_runs:
             any_failed = handle_test_result(tc_output, *run_test(test_run[0], test_run[1],
-                                                                 encryption, tc_output, debug))
+                                                                 encryption, tc_output, debug)) or any_failed
+
+    # Everything else has finished; the worker dirs still exist, so reuse w1 in parallel mode.
+    deferred_worker_id = 1 if number_of_workers > 0 else 0
+    for test_run in deferred_runs:
+        any_failed = handle_test_result(tc_output, *run_test(test_run[0], test_run[1], encryption, tc_output,
+                                                             debug, deferred_worker_id)) or any_failed
 
     tc_output.close()
     if os.path.isdir(workdir):

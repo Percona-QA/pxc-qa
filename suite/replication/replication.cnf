@@ -2,3 +2,5 @@
 log_bin=binlog
 binlog_format=ROW
 log_slave_updates=ON
+gtid_mode=OFF
+enforce_gtid_consistency=OFF
