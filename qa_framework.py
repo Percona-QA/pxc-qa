@@ -292,6 +292,13 @@ def main():
     tests = parse_csv_values(args.tests)
     suites = parse_csv_values(args.suites)
     number_of_workers = args.number_of_workers
+    if encryption and number_of_workers > 0:
+        message = ('WARNING: -e/--encryption-run and -w/--number-of-workers were both given, but '
+                   'encryption-mode tests share global keyring manifest/config files in basedir that '
+                   'parallel workers would race on; ignoring -w and running sequentially instead.')
+        log_output(message, tc_output)
+        log_output("", tc_output)
+        number_of_workers = 0
     test_runs = []
     for suite in suites:
         validate_suite(scriptdir, suite)

@@ -105,22 +105,37 @@ def cluster_keyring_file_path(worker_id: int):
     os.makedirs(keyring_dir, exist_ok=True)
     return os.path.join(keyring_dir, cluster_keyring_file_name)
 
+def write_json_file_atomic_if_changed(path: str, data: dict):
+    """ Write a JSON manifest/config file atomically, and only if its
+        content actually needs to change.
+
+        Used for files shared across the whole basedir (not worker- or
+        node-scoped), so concurrent/repeated callers can't tear a reader's
+        view of the file (atomic replace) and don't needlessly re-write
+        (and race on) a file that already has the right content.
+    """
+    desired = json.dumps(data, indent=2) + '\n'
+    if os.path.isfile(path):
+        with open(path) as existing_file:
+            if existing_file.read() == desired:
+                return
+    tmp_path = path + '.tmp.' + str(os.getpid())
+    with open(tmp_path, 'w') as tmp_file:
+        tmp_file.write(desired)
+    os.replace(tmp_path, path)
+
 def setup_global_keyring(worker_id: int):
-    with open(os.path.join(base_dir, 'bin', 'mysqld.my'), 'w') as manifest_file:
-        json.dump({"components": "file://" + comp_name}, manifest_file, indent=2)
-        manifest_file.write('\n')
-    with open(os.path.join(base_dir, 'lib', 'plugin', comp_name + '.cnf'), 'w') as cnf_file:
-        json.dump({"path": cluster_keyring_file_path(worker_id), "read_only": False}, cnf_file, indent=2)
-        cnf_file.write('\n')
+    write_json_file_atomic_if_changed(os.path.join(base_dir, 'bin', 'mysqld.my'),
+                                      {"components": "file://" + comp_name})
+    write_json_file_atomic_if_changed(os.path.join(base_dir, 'lib', 'plugin', comp_name + '.cnf'),
+                                      {"path": cluster_keyring_file_path(worker_id), "read_only": False})
 
 def setup_local_keyring_redirect():
     """Per-table encryption can use local manifest/config files in the datadir."""
-    with open(os.path.join(base_dir, 'bin', 'mysqld.my'), 'w') as manifest_file:
-        json.dump({"read_local_manifest": True}, manifest_file, indent=2)
-        manifest_file.write('\n')
-    with open(os.path.join(base_dir, 'lib', 'plugin', comp_name + '.cnf'), 'w') as cnf_file:
-        json.dump({"read_local_config": True}, cnf_file, indent=2)
-        cnf_file.write('\n')
+    write_json_file_atomic_if_changed(os.path.join(base_dir, 'bin', 'mysqld.my'),
+                                      {"read_local_manifest": True})
+    write_json_file_atomic_if_changed(os.path.join(base_dir, 'lib', 'plugin', comp_name + '.cnf'),
+                                      {"read_local_config": True})
 
 def setup_local_keyring(worker_id: int, node_number: int):
     with open(os.path.join(node_datadir(worker_id, node_number), 'mysqld.my'), 'w') as manifest_file:
