@@ -131,6 +131,23 @@ def setup_local_keyring(worker_id: int, node_number: int):
         json.dump({"path": component_keyring_file_path(worker_id, node_number), "read_only": False}, cnf_file, indent=2)
         cnf_file.write('\n')
 
+def add_section_options(conf_file: str, section: str, options: dict):
+    """ Add options to a cnf file's [section], reusing the section if it
+        already exists instead of appending a second copy of it.
+    """
+    with open(conf_file) as cnf_handle:
+        lines = cnf_handle.readlines()
+    option_lines = [option + '=' + str(value) + '\n' for option, value in options.items()]
+    section_header = '[' + section + ']'
+    header_index = next((i for i, line in enumerate(lines) if line.strip() == section_header), None)
+    if header_index is not None:
+        lines[header_index + 1:header_index + 1] = option_lines
+    else:
+        lines.append(section_header + '\n')
+        lines.extend(option_lines)
+    with open(conf_file, 'w') as cnf_handle:
+        cnf_handle.writelines(lines)
+
 
 class StartCluster:
     def __init__(self, number_of_nodes, debug, server_version: Version = None, worker_id: int = 0,
@@ -387,7 +404,8 @@ class StartCluster:
         return pxc_nodes
 
     @staticmethod
-    def join_new_node(donor: DbConnection, joiner_node_number: int, basedir: str = base_dir, debug: str = 'NO', encryption: bool = False):
+    def join_new_node(donor: DbConnection, joiner_node_number: int, basedir: str = base_dir, debug: str = 'NO',
+                      encryption: bool = False, sst_extra_conf: dict = None):
         is_source_wsrep_cluster = donor.is_wsrep_cluster()
         worker_id = donor.get_worker_id()
         joiner_node_cnf = node_conf(worker_id, joiner_node_number)
@@ -448,6 +466,8 @@ class StartCluster:
         os.mkdir(joiner_data_dir)
         if encryption:
             setup_local_keyring(worker_id, joiner_node_number)
+        if sst_extra_conf:
+            add_section_options(joiner_node_cnf, 'sst', sst_extra_conf)
 
         time.sleep(10)
         joiner = db_connection.DbConnection(user=user, socket=node_socket(worker_id, joiner_node_number),
@@ -463,12 +483,14 @@ class StartCluster:
         return joiner
 
     @staticmethod
-    def join_new_upgraded_node(donor: DbConnection, joiner_node_number: int, debug: str = 'NO', encryption: bool = False):
-        return StartCluster.join_new_node(donor, joiner_node_number, higher_version_basedir, debug, encryption)
+    def join_new_upgraded_node(donor: DbConnection, joiner_node_number: int, debug: str = 'NO', encryption: bool = False,
+                               sst_extra_conf: dict = None):
+        return StartCluster.join_new_node(donor, joiner_node_number, higher_version_basedir, debug, encryption,
+                                          sst_extra_conf)
 
     @staticmethod
     def upgrade_pxc_node(node: DbConnection, debug, node_to_add_load: DbConnection = None, config_replace: dict = None,
-                         node_sync_timeout: int = DEFAULT_SERVER_UP_TIMEOUT):
+                         node_sync_timeout: int = DEFAULT_SERVER_UP_TIMEOUT, sst_extra_conf: dict = None):
         is_source_wsrep_cluster = node.is_wsrep_cluster()
         node_port = node.get_port()
         pid_file = node.execute_get_value("select @@pid_file")
@@ -511,6 +533,8 @@ class StartCluster:
             if ret != 0:
                 print(f"Failed to add pxc_encrypt_cluster_traffic option to {node_cnf}")
                 exit(1)
+        if sst_extra_conf:
+            add_section_options(node_cnf, 'sst', sst_extra_conf)
         if int(version) > int("080000"):
             os.system("sed -i '/wsrep_sst_auth=root:/d' " + node_cnf)
             if config_replace is not None:

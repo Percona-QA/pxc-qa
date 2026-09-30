@@ -18,7 +18,12 @@ class PXCUpgrade(BaseTest):
 
     def join_higher_version_node(self):
         # Start PXC cluster for upgrade test
-        self.pxc_nodes.append(pxc_startup.StartCluster.join_new_upgraded_node(self.node3, 4, debug, encryption=encryption))
+        # SST post-processing (mysql_upgrade-equivalent data dictionary
+        # upgrade) can take longer than the SST script's default timeout
+        # when the donor/joiner versions are far apart, so raise it here.
+        self.pxc_nodes.append(pxc_startup.StartCluster.join_new_upgraded_node(
+            self.node3, 4, debug, encryption=encryption,
+            sst_extra_conf={'post-processing-timeout': 600}))
 
     def sysbench_run(self, upgrade_type):
         # Sysbench dataload for consistency test
@@ -69,10 +74,17 @@ class PXCUpgrade(BaseTest):
             else:
                 node_to_add_load = None
             cnf_replace = {"wsrep_slave_threads": "30"}
+            # 'readwrite_sst' deliberately exhausts gcache so the joining
+            # node falls back to a full SST under active load - same kind
+            # of cross-version SST + post-processing (mysql_upgrade-
+            # equivalent) that needs a longer timeout in join_higher_version_node.
+            sst_extra_conf = {'post-processing-timeout': 600} if upgrade_type == 'readwrite_sst' else None
             if 'readwrite' in upgrade_type:
-                pxc_startup.StartCluster.upgrade_pxc_node(node, debug, node_to_add_load, cnf_replace, 1500)
+                pxc_startup.StartCluster.upgrade_pxc_node(node, debug, node_to_add_load, cnf_replace, 1500,
+                                                          sst_extra_conf=sst_extra_conf)
             else:
-                pxc_startup.StartCluster.upgrade_pxc_node(node, debug, node_to_add_load, cnf_replace)
+                pxc_startup.StartCluster.upgrade_pxc_node(node, debug, node_to_add_load, cnf_replace,
+                                                          sst_extra_conf=sst_extra_conf)
         time.sleep(60)
         sysbench_node = sysbench_run.SysbenchRun(self.node1, debug, workdir)
         sysbench_node.test_sysbench_oltp_read_write(db, SYSBENCH_TABLE_COUNT, SYSBENCH_THREADS,
@@ -101,13 +113,13 @@ rqg_dataload = rqg_datagen.RQGDataGen(upgrade_qa.node1, debug)
 rqg_dataload.pxc_dataload(workdir)
 upgrade_qa.rolling_upgrade('readonly')
 
-utility.test_scenario_header(" Rolling upgrade with active read/write workload enforcing SST on node-join)")
+utility.test_scenario_header("Rolling upgrade with active read/write workload enforcing SST on node-join")
 upgrade_qa.start_pxc()
 rqg_dataload = rqg_datagen.RQGDataGen(upgrade_qa.node1, debug)
 rqg_dataload.pxc_dataload(workdir)
 upgrade_qa.rolling_upgrade('readwrite_sst')
 
-utility.test_scenario_header(" Rolling upgrade with active read/write workload enforcing IST on node-join)")
+utility.test_scenario_header("Rolling upgrade with active read/write workload enforcing IST on node-join")
 upgrade_qa.set_wsrep_provider_options('gcache.keep_pages_size=5;gcache.page_size=1024M;gcache.size=1024M;')
 upgrade_qa.start_pxc()
 rqg_dataload = rqg_datagen.RQGDataGen(upgrade_qa.node1, debug)
