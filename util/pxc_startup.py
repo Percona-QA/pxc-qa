@@ -414,6 +414,13 @@ class StartCluster:
                                               is_wsrep_cluster=self.__is_wsrep_cluster)
             result = utility_cmd.startup_check(node, terminate_on_startup_failure)
             pxc_nodes.append(node)
+            if result != 0:
+                break
+            # Wait for this node to be fully Synced before starting the
+            # next one - a node that's still mid-SST/IST can cause the
+            # next joiner's gcomm connection attempts to see a transient
+            # non-primary view and time out.
+            utility_cmd.wait_for_wsrep_status(node)
         if result != 0:
             return []
         return pxc_nodes

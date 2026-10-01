@@ -160,13 +160,6 @@ class BaseTest:
             self.node2 = self.pxc_nodes[1]
             self.node3 = self.pxc_nodes[2]
             self.node1.test_connection_check()
-            # start_cluster()'s per-node startup_check only confirms mysqld
-            # accepts connections, not that a joiner has finished SST/IST -
-            # wait for every node to be Synced before handing the cluster
-            # back, so callers running workloads right away (e.g. sysbench
-            # against node2/node3) don't race a joiner still catching up.
-            for node in self.pxc_nodes:
-                utility_cmd.wait_for_wsrep_status(node)
         else:
             print("Some problem while setting up cluster nodes. Not all nodes seems in healthy state")
             print("Number of nodes: " + str(len(self.pxc_nodes)))
