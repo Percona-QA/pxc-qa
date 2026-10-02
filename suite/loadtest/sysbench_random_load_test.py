@@ -19,7 +19,7 @@ class SysbenchRandomLoadTest(BaseTest):
             my_extra = my_extra + " --innodb_log_file_size=1G"
         else:
             my_extra = my_extra + " --innodb_redo_log_capacity=2G"
-        super().__init__(my_extra=my_extra)
+        super().__init__(my_extra=my_extra, wsrep_provider_options='pc.wait_prim_timeout=PT60S;')
 
     def sysbench_run(self, nodes: list[DbConnection]):
         checksum = ""

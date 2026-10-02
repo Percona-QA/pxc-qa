@@ -32,7 +32,10 @@ class WSREPProviderRandomTest(BaseTest):
         keys = wsrep_provider_options.keys()
         values = (wsrep_provider_options[key] for key in keys)
         wsrep_combinations = [dict(zip(keys, combination)) for combination in itertools.product(*values)]
-        wsrep_provider_option = ''
+        # Galera's default ~30s pc.wait_prim_timeout can be too short under
+        # load; keep this prefix across every random combination below.
+        base_wsrep_provider_option = 'pc.wait_prim_timeout=PT60S;'
+        wsrep_provider_option = base_wsrep_provider_option
         for wsrep_combination in range(0, len(wsrep_combinations)):
             for wsrep_option, wsrep_value in wsrep_combinations[wsrep_combination].items():
                 wsrep_provider_option += wsrep_option + "=" + str(wsrep_value) + ";"
@@ -55,7 +58,7 @@ class WSREPProviderRandomTest(BaseTest):
             utility_cmd.restart_and_check_node(self.node2)
             utility_cmd.wait_for_wsrep_status(self.node2)
 
-            wsrep_provider_option = ''
+            wsrep_provider_option = base_wsrep_provider_option
             time.sleep(5)
             utility_cmd.test_table_count(self.node1, self.node2, db)
             self.shutdown_nodes()

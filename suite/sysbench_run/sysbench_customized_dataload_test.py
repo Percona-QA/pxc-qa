@@ -18,7 +18,10 @@ class SysbenchLoadTest(BaseTest):
             my_extra = my_extra + " --innodb_log_file_size=1G"
         else:
             my_extra = my_extra + " --innodb_redo_log_capacity=2G"
-        super().__init__(my_extra=my_extra)
+        # Large innodb_buffer_pool_size above can slow node startup on a
+        # loaded host enough that Galera's default ~30s pc.wait_prim_timeout
+        # isn't enough for the other nodes to come up and be reachable.
+        super().__init__(my_extra=my_extra, wsrep_provider_options='pc.wait_prim_timeout=PT120S;')
 
     def sysbench_run(self, node: DbConnection):
         # Sysbench load test
