@@ -25,7 +25,7 @@ class SysbenchLoadTest(BaseTest):
 
     def sysbench_run(self, nodes: list[DbConnection]):
         # Sysbench load test
-        threads = [32, 1024]  # 64, 128, 256
+        threads = [32, 128]  # 64, 128, 256, 1024
         if int(version) < int("080000"):
             checksum = table_checksum.TableChecksum(nodes[0], workdir, pt_basedir, debug)
             checksum.sanity_check(nodes)

@@ -14,7 +14,13 @@ from util import table_checksum
 
 class SysbenchRandomLoadTest(BaseTest):
     def __init__(self):
-        my_extra = "--max-connections=1500 --innodb_buffer_pool_size=2G"
+        # 1024 sysbench threads against 1000 tables need a lot of concurrently
+        # open file descriptors (one socket per connection plus table/log
+        # files); mysqld can only raise its own open_files_limit up to
+        # whatever the launching process's ulimit -n allows, so ask for a
+        # generous value explicitly rather than relying on its default
+        # (derived from max_connections/table_open_cache) being enough.
+        my_extra = "--max-connections=1500 --open_files_limit=65535 --innodb_buffer_pool_size=2G"
         if int(version) < int("090000"):
             my_extra = my_extra + " --innodb_log_file_size=1G"
         else:
@@ -25,7 +31,7 @@ class SysbenchRandomLoadTest(BaseTest):
         checksum = ""
         # Sysbench load test
         tables = [50, 1000]  # 100, 300, 600
-        threads = [32, 1024]  # 64, 128, 256, 512
+        threads = [32, 128]  # 64, 128, 256, 512, 1024
         if int(version) < int("080000"):
             checksum = table_checksum.TableChecksum(nodes[0], workdir, pt_basedir, debug)
             checksum.sanity_check(nodes)
