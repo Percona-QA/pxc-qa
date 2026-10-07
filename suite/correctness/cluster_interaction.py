@@ -50,8 +50,28 @@ class ClusterInteraction(BaseTest):
             queries = ["flush table " + db + ".sbtest1 with read lock",
                        "select sleep(120)",
                        "unlock tables"]
-            self.node1.execute_queries(queries)
-            flow_control_status = 'OFF'
+            flow_control_retries = 5
+            for attempt in range(1, flow_control_retries + 1):
+                try:
+                    self.node1.execute_queries(queries)
+                    break
+                except QueryExecutionError as flow_control_error:
+                    # Under active write load, PXC can BF-abort the
+                    # connection holding this read lock so a replicated
+                    # writeset can apply - that's expected cluster
+                    # behavior under flow control, not a test failure.
+                    if "Lost connection" not in str(flow_control_error):
+                        raise
+                    if attempt == flow_control_retries:
+                        print("Flow control query sequence kept losing its connection after " +
+                             str(flow_control_retries) + " attempts, giving up: " + str(flow_control_error))
+                        raise
+                    print("Flow control query sequence lost its connection (likely BF-aborted "
+                         "while holding the read lock under active write load); retrying (" +
+                         str(attempt) + "/" + str(flow_control_retries) + ")")
+                    time.sleep(5)
+
+            flow_control_status = 'ON'
             count = 1
             while flow_control_status != 'OFF':
                 if count > 30:
@@ -60,6 +80,12 @@ class ClusterInteraction(BaseTest):
                 flow_control_status = self.node1.execute_get_row("show status like wsrep_flow_control_status")[1]
                 time.sleep(1)
                 count = count + 1
+
+            # Confirm the flow control test didn't leave the cluster
+            # unhealthy, regardless of whether the query sequence above
+            # needed a retry.
+            for node in self.pxc_nodes:
+                utility_cmd.wait_for_wsrep_status(node)
 
         utility_cmd.check_testcase(0, "Initiating IST test")
 
