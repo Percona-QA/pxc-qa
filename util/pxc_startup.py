@@ -661,7 +661,12 @@ class StartCluster:
                 backup_extra = " --keyring-file-data=" + node.get_data_dir() + \
                            "/keyring --early-plugin-load='keyring_file=keyring_file.so'"
             else:
-                prepare_extra = " --component-keyring-config=" + node.get_data_dir() + '/' + comp_name + '.cnf'
+                # Needed for both --backup (reading encrypted source data)
+                # and --prepare (applying redo on encrypted pages); it was
+                # previously only passed to --prepare via prepare_extra,
+                # so --backup had no keyring config and failed to load the
+                # keyring component.
+                backup_extra = " --component-keyring-config=" + node.get_data_dir() + '/' + comp_name + '.cnf'
         def run_with_timeout(cmd, description):
             try:
                 return subprocess.call(cmd, shell=True, timeout=BACKUP_TIMEOUT)
