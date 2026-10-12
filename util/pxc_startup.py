@@ -661,12 +661,23 @@ class StartCluster:
                 backup_extra = " --keyring-file-data=" + node.get_data_dir() + \
                            "/keyring --early-plugin-load='keyring_file=keyring_file.so'"
             else:
-                # Needed for both --backup (reading encrypted source data)
-                # and --prepare (applying redo on encrypted pages); it was
-                # previously only passed to --prepare via prepare_extra,
-                # so --backup had no keyring config and failed to load the
-                # keyring component.
-                backup_extra = " --component-keyring-config=" + node.get_data_dir() + '/' + comp_name + '.cnf'
+                # --xtrabackup-plugin-dir tells xtrabackup where to load
+                # component_keyring_file.so from. This must be xtrabackup's
+                # OWN plugin dir (next to whichever xtrabackup binary is
+                # actually run), not the PXC server build's plugin dir -
+                # they're separate installs and the component must match
+                # the xtrabackup binary loading it. Without it, --backup
+                # fails to load the component at all ("Unknown error 1126":
+                # can't open shared library). It applies to both --backup
+                # and --prepare.
+                # --component-keyring-config is ignored by --backup
+                # (xtrabackup gets the active keyring config from the live
+                # server connection instead) but is required for the later,
+                # connection-less --prepare step.
+                xtrabackup_bin = find_executable('xtrabackup')
+                xtrabackup_root = os.path.dirname(os.path.dirname(xtrabackup_bin))
+                backup_extra = " --xtrabackup-plugin-dir=" + os.path.join(xtrabackup_root, 'lib', 'plugin')
+                prepare_extra = " --component-keyring-config=" + node.get_data_dir() + '/' + comp_name + '.cnf'
         def run_with_timeout(cmd, description):
             try:
                 return subprocess.call(cmd, shell=True, timeout=BACKUP_TIMEOUT)
