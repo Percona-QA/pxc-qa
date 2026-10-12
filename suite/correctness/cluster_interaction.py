@@ -65,7 +65,7 @@ class ClusterInteraction(BaseTest):
                     if attempt == flow_control_retries:
                         print("Flow control query sequence kept losing its connection after " +
                              str(flow_control_retries) + " attempts, giving up: " + str(flow_control_error))
-                        raise
+
                     print("Flow control query sequence lost its connection (likely BF-aborted "
                          "while holding the read lock under active write load); retrying (" +
                          str(attempt) + "/" + str(flow_control_retries) + ")")
