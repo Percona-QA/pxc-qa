@@ -50,7 +50,7 @@ class ClusterInteraction(BaseTest):
             queries = ["flush table " + db + ".sbtest1 with read lock",
                        "select sleep(120)",
                        "unlock tables"]
-            flow_control_retries = 5
+            flow_control_retries = 2
             for attempt in range(1, flow_control_retries + 1):
                 try:
                     self.node1.execute_queries(queries)
@@ -77,7 +77,7 @@ class ClusterInteraction(BaseTest):
                 if count > 30:
                     print("flow control status isn't OFF, its = " + flow_control_status)
                     break
-                flow_control_status = self.node1.execute_get_row("show status like wsrep_flow_control_status")[1]
+                flow_control_status = self.node1.execute_get_row("show status like 'wsrep_flow_control_status'")[1]
                 time.sleep(1)
                 count = count + 1
 
