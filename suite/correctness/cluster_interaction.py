@@ -62,6 +62,7 @@ class ClusterInteraction(BaseTest):
                     # behavior under flow control, not a test failure.
                     if "Lost connection" not in str(flow_control_error):
                         raise
+                    self.node1.execute("unlock tables")
                     if attempt == flow_control_retries:
                         print("Flow control query sequence kept losing its connection after " +
                              str(flow_control_retries) + " attempts, giving up: " + str(flow_control_error))
@@ -80,6 +81,8 @@ class ClusterInteraction(BaseTest):
                 flow_control_status = self.node1.execute_get_row("show status like 'wsrep_flow_control_status'")[1]
                 time.sleep(1)
                 count = count + 1
+
+            self.node1.execute("set global pxc_strict_mode=ENFORCING")
 
             # Confirm the flow control test didn't leave the cluster
             # unhealthy, regardless of whether the query sequence above
