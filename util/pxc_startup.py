@@ -652,21 +652,58 @@ class StartCluster:
         # Enable keyring file plugin if it is encryption run
         backup_extra = ''
         prepare_extra = ''
+        copy_extra = ''
         if encryption:
             version_info = node.get_mysql_version()
             version = "{:02d}{:02d}{:02d}".format(int(version_info.split('.')[0]),
                                                   int(version_info.split('.')[1]),
                                                   int(version_info.split('.')[2].split('-')[0]))
             if int(version) < int("080024"):
-                backup_extra = " --keyring-file-data=" + node.get_data_dir() + \
+                legacy_keyring_extra = " --keyring-file-data=" + node.get_data_dir() + \
                            "/keyring --early-plugin-load='keyring_file=keyring_file.so'"
+                backup_extra = legacy_keyring_extra
+                prepare_extra = legacy_keyring_extra
+                copy_extra = legacy_keyring_extra
             else:
-                # Needed for both --backup (reading encrypted source data)
-                # and --prepare (applying redo on encrypted pages); it was
-                # previously only passed to --prepare via prepare_extra,
-                # so --backup had no keyring config and failed to load the
-                # keyring component.
-                backup_extra = " --component-keyring-config=" + node.get_data_dir() + '/' + comp_name + '.cnf'
+                # --backup is a live, connection-based operation: it needs
+                # --xtrabackup-plugin-dir pointed at the server build's own
+                # plugin dir to load component_keyring_file.so matching
+                # what the running server uses (component_keyring_file is a
+                # Percona-Server/PXC-specific component - a standalone
+                # xtrabackup install doesn't bundle its own copy). Without
+                # it, --backup fails to load the component at all ("Unknown
+                # error 1126": can't open shared library).
+                # --prepare is the opposite: it's an offline, connection-
+                # less operation, and must be left WITHOUT
+                # --xtrabackup-plugin-dir so it uses its own default plugin
+                # dir - pointing it at the server's plugin dir breaks it.
+                # It instead takes the keyring config explicitly via
+                # --component-keyring-config, since there's no live server
+                # to query it from.
+                # --copy-back needs neither: by then the data is already
+                # decrypted/prepared, and the destination mysqld loads its
+                # own keyring at runtime.
+                backup_extra = " --xtrabackup-plugin-dir=" + base_dir + "/lib/plugin"
+                # --prepare reads this config well after --backup, and the
+                # node (and its datadir) may have moved on by then - copy
+                # the keyring config and the keyring data file it points to
+                # out of the node's datadir into the backup dir, rewriting
+                # the copied config to reference the copied keyring file,
+                # so --prepare has its own stable, independent copy to use.
+                src_keyring_cnf = node.get_data_dir() + '/' + comp_name + '.cnf'
+                with open(src_keyring_cnf) as keyring_cnf_file:
+                    keyring_cnf_data = json.load(keyring_cnf_file)
+                prepare_keyring_dir = os.path.join(backup_dir, 'keyring_for_prepare')
+                os.makedirs(prepare_keyring_dir, exist_ok=True)
+                dest_keyring_data_file = os.path.join(prepare_keyring_dir,
+                                                      os.path.basename(keyring_cnf_data['path']))
+                shutil.copy(keyring_cnf_data['path'], dest_keyring_data_file)
+                keyring_cnf_data['path'] = dest_keyring_data_file
+                dest_keyring_cnf = os.path.join(prepare_keyring_dir, comp_name + '.cnf')
+                with open(dest_keyring_cnf, 'w') as keyring_cnf_file:
+                    json.dump(keyring_cnf_data, keyring_cnf_file, indent=2)
+                    keyring_cnf_file.write('\n')
+                prepare_extra = " --component-keyring-config=" + dest_keyring_cnf
         def run_with_timeout(cmd, description):
             try:
                 return subprocess.call(cmd, shell=True, timeout=BACKUP_TIMEOUT)
@@ -688,7 +725,7 @@ class StartCluster:
         Utility.check_testcase(result, "xtrabackup backup")
 
         # Prepare backup for node startup
-        prepare_backup = ("xtrabackup --prepare --target_dir=" + backup_dir + ' ' + backup_extra + prepare_extra +
+        prepare_backup = ("xtrabackup --prepare --target_dir=" + backup_dir + ' ' + prepare_extra +
                           " --lock-ddl >" + workdir + "/log/xb_backup_prepare.log 2>&1")
         if debug == 'YES':
             print(prepare_backup)
@@ -701,7 +738,7 @@ class StartCluster:
             if os.path.exists(dest_datadir):
                 shutil.rmtree(dest_datadir)
             copy_backup = ("xtrabackup --copy-back --target-dir=" + backup_dir + " --datadir=" + dest_datadir +
-                           " " + backup_extra + " --lock-ddl >" +  workdir + "/log/copy_backup.log 2>&1")
+                           " " + copy_extra + " --lock-ddl >" +  workdir + "/log/copy_backup.log 2>&1")
             if debug == 'YES':
                 print(copy_backup)
             result = run_with_timeout(copy_backup, "xtrabackup copy-back")
