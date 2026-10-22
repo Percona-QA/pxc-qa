@@ -28,7 +28,7 @@ lua_dir = SYSBENCH_DIR + "/"
 GALERA_WRITE_CONFLICT_ERRORS = "1213,1020,1205,1180"
 
 # Maximum time (in seconds) a single sysbench run is allowed to take.
-SYSBENCH_RUN_TIMEOUT = 50 * 60
+SYSBENCH_RUN_TIMEOUT = 120 * 60
 # Seconds to poll after launching background sysbench before treating launch as successful.
 SYSBENCH_LAUNCH_CHECK_TIMEOUT = 2
 

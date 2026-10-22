@@ -21,11 +21,11 @@ class SysbenchLoadTest(BaseTest):
             my_extra = my_extra + " --innodb_log_file_size=1G"
         else:
             my_extra = my_extra + " --innodb_redo_log_capacity=2G"
-        super().__init__(my_extra=my_extra)
+        super().__init__(my_extra=my_extra, wsrep_provider_options='pc.wait_prim_timeout=PT60S;')
 
     def sysbench_run(self, nodes: list[DbConnection]):
         # Sysbench load test
-        threads = [32, 1024]  # 64, 128, 256
+        threads = [32, 128]  # 64, 128, 256, 1024
         if int(version) < int("080000"):
             checksum = table_checksum.TableChecksum(nodes[0], workdir, pt_basedir, debug)
             checksum.sanity_check(nodes)

@@ -417,9 +417,13 @@ class StartCluster:
             if result != 0:
                 break
             # Wait for this node to be fully Synced before starting the
-            # next one - a node that's still mid-SST/IST can cause the
-            # next joiner's gcomm connection attempts to see a transient
-            # non-primary view and time out.
+            # next one - a node that's still mid-SST/IST (or just slow to
+            # start, e.g. under memory pressure from a large buffer pool)
+            # can cause the next joiner's gcomm connection attempts to see
+            # a transient non-primary view. Tests prone to slow startup
+            # raise pc.wait_prim_timeout via wsrep_provider_options so this
+            # wait has room to actually succeed instead of the node's own
+            # gcomm layer aborting it first (Galera's default is ~30s).
             utility_cmd.wait_for_wsrep_status(node)
         if result != 0:
             return []

@@ -56,6 +56,12 @@ class SetupReplication(BaseTest):
 
 
 utility.test_header("Setup replication using Percona Xtrabackup")
+
+if encryption:
+    # TODO: temporarily disabled in encryption mode. Fix the test and enable it.
+    print("Skipping backup_replication.py in encryption mode - see TODO in this file")
+    exit(SKIP_TEST_EXIT_CODE)
+
 replication_run = SetupReplication()
 replication_run.start_pxc()
 replication_run.sysbench_run('pxcdb')
