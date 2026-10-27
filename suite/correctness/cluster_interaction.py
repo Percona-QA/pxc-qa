@@ -34,6 +34,10 @@ class ClusterInteraction(BaseTest):
             sysbench.test_sysbench_oltp_read_write(db, SYSBENCH_TABLE_COUNT, SYSBENCH_TABLE_COUNT,
                                                    SYSBENCH_NORMAL_TABLE_SIZE, SYSBENCH_RUN_TIME, background_run)
 
+    @staticmethod
+    def flow_control_counter(node: DbConnection, status_name: str):
+        return int(node.execute_get_row("show global status like '" + status_name + "'")[1])
+
     def cluster_interaction_qa(self):
         """ This method will help us to test cluster
             interaction using following test methods.
@@ -45,48 +49,41 @@ class ClusterInteraction(BaseTest):
         sysbench_pid = utility.sysbench_pid(self.node1)
         if int(version) > int("050700"):
             utility_cmd.check_testcase(0, "Initiating flow control test")
-            #for j in range(1, 2):
-            self.node1.execute("set global pxc_strict_mode=DISABLED")
+            # Lock a table on node2, which has no local writers: FLUSH TABLE ... WITH READ LOCK
+            # pauses its provider, its applier stalls and its recv queue makes it send flow
+            # control to node1. Locking node1 instead deadlocks - the FLUSH waits for sysbench's
+            # node1 transactions, which can't commit while node1's provider is paused - and a
+            # connection lost in that state leaves the provider paused for the rest of the test.
+            self.node2.execute("set global pxc_strict_mode=DISABLED")
+            fc_sent_before = self.flow_control_counter(self.node2, 'wsrep_flow_control_sent')
+            fc_recv_before = self.flow_control_counter(self.node1, 'wsrep_flow_control_recv')
             queries = ["flush table " + db + ".sbtest1 with read lock",
                        "select sleep(120)",
                        "unlock tables"]
-            flow_control_retries = 2
-            for attempt in range(1, flow_control_retries + 1):
-                try:
-                    self.node1.execute_queries(queries)
-                    break
-                except QueryExecutionError as flow_control_error:
-                    # Under active write load, PXC can BF-abort the
-                    # connection holding this read lock so a replicated
-                    # writeset can apply - that's expected cluster
-                    # behavior under flow control, not a test failure.
-                    if "Lost connection" not in str(flow_control_error):
-                        raise
-                    self.node1.execute("unlock tables")
-                    if attempt == flow_control_retries:
-                        print("Flow control query sequence kept losing its connection after " +
-                             str(flow_control_retries) + " attempts, giving up: " + str(flow_control_error))
+            self.node2.execute_queries(queries)
 
-                    print("Flow control query sequence lost its connection (likely BF-aborted "
-                         "while holding the read lock under active write load); retrying (" +
-                         str(attempt) + "/" + str(flow_control_retries) + ")")
-                    time.sleep(5)
+            # node2 requests the pause, node1 (the writer) receives it.
+            fc_sent = self.flow_control_counter(self.node2, 'wsrep_flow_control_sent') - fc_sent_before
+            fc_recv = self.flow_control_counter(self.node1, 'wsrep_flow_control_recv') - fc_recv_before
+            print("Flow control messages sent by node2: " + str(fc_sent) + ", received by node1: " + str(fc_recv))
+            utility_cmd.check_testcase(0 if fc_sent > 0 else 1, "Flow control triggered by locked node2")
+            utility_cmd.check_testcase(0 if fc_recv > 0 else 1, "Flow control received by writer node1")
 
-            flow_control_status = 'ON'
-            count = 1
-            while flow_control_status != 'OFF':
-                if count > 30:
-                    print("flow control status isn't OFF, its = " + flow_control_status)
-                    break
-                flow_control_status = self.node1.execute_get_row("show status like 'wsrep_flow_control_status'")[1]
-                time.sleep(1)
-                count = count + 1
+            for node in [self.node1, self.node2]:
+                flow_control_status = 'ON'
+                count = 1
+                while flow_control_status != 'OFF':
+                    if count > 30:
+                        print("flow control status on node" + str(node.get_node_number()) +
+                              " isn't OFF, its = " + flow_control_status)
+                        break
+                    flow_control_status = node.execute_get_row("show status like 'wsrep_flow_control_status'")[1]
+                    time.sleep(1)
+                    count = count + 1
 
-            self.node1.execute("set global pxc_strict_mode=ENFORCING")
+            self.node2.execute("set global pxc_strict_mode=ENFORCING")
 
-            # Confirm the flow control test didn't leave the cluster
-            # unhealthy, regardless of whether the query sequence above
-            # needed a retry.
+            # Confirm the flow control test didn't leave the cluster unhealthy.
             for node in self.pxc_nodes:
                 utility_cmd.wait_for_wsrep_status(node)
 
