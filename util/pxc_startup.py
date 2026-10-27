@@ -130,11 +130,16 @@ def setup_global_keyring(worker_id: int):
     write_json_file_atomic_if_changed(os.path.join(base_dir, 'lib', 'plugin', comp_name + '.cnf'),
                                       {"path": cluster_keyring_file_path(worker_id), "read_only": False})
 
-def setup_local_keyring_redirect():
-    """Per-table encryption can use local manifest/config files in the datadir."""
-    write_json_file_atomic_if_changed(os.path.join(base_dir, 'bin', 'mysqld.my'),
+def setup_local_keyring_redirect(basedir: str = None):
+    """Per-table encryption can use local manifest/config files in the datadir.
+       The redirect lives in the basedir, so a node started from another
+       basedir (e.g. the upgraded version) needs it there as well.
+    """
+    if basedir is None:
+        basedir = base_dir
+    write_json_file_atomic_if_changed(os.path.join(basedir, 'bin', 'mysqld.my'),
                                       {"read_local_manifest": True})
-    write_json_file_atomic_if_changed(os.path.join(base_dir, 'lib', 'plugin', comp_name + '.cnf'),
+    write_json_file_atomic_if_changed(os.path.join(basedir, 'lib', 'plugin', comp_name + '.cnf'),
                                       {"read_local_config": True})
 
 def setup_local_keyring(worker_id: int, node_number: int):
@@ -491,6 +496,7 @@ class StartCluster:
         os.system("rm -rf " + joiner_data_dir)
         os.mkdir(joiner_data_dir)
         if encryption:
+            setup_local_keyring_redirect(basedir)
             setup_local_keyring(worker_id, joiner_node_number)
         if sst_extra_conf:
             add_section_options(joiner_node_cnf, 'sst', sst_extra_conf)
@@ -549,6 +555,10 @@ class StartCluster:
         utility_cmd = utility.Utility(debug)
         version = utility_cmd.version_check(PXC_UPPER_BASE)
         node_cnf = node.get_conf_file()
+        # Node uses a local keyring in its datadir (encryption run); the upgraded
+        # binary needs the redirect in its own basedir to load it.
+        if os.path.isfile(os.path.join(node.get_data_dir(), 'mysqld.my')):
+            setup_local_keyring_redirect(higher_version_basedir)
         if is_source_wsrep_cluster:
             cmd = (
                 "sed -i '/^[[:space:]]*wsrep_sst_method.*/a\\\n"

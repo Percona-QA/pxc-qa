@@ -12,7 +12,7 @@ parent_dir = os.path.normpath(os.path.join(script_dir, '../'))
 rand_gen_dir = RQG_DIR
 gen_data_pl = rand_gen_dir + '/gendata.pl'
 
-RQG_RUN_TIMEOUT = 60 * 60
+RQG_RUN_TIMEOUT = 90 * 60
 
 class RQGDataGen:
     def __init__(self, node: DbConnection, debug):

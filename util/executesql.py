@@ -58,14 +58,18 @@ class GenerateSQL:
                 data_types += column_names[j] + " " + column_description + ", "
             self.node.execute("CREATE TABLE IF NOT EXISTS " + self.db + "." + table_name + "( " + data_types +
                               " primary key (c1" + index_length + ") );")
+            # Insert all rows over a single connection; opening one connection per row exhausts
+            # max_connections. Random data can repeat primary key values, hence INSERT IGNORE.
+            insert_queries = []
             for j in range(self.insert_sql_count):
                 data_value = ""
                 for column_description in typearray:
                     text = datagen.DataGenerator(column_description)
                     data_value += "'" + text.getData() + "', "
                 data_value = data_value[:-2]
-                self.node.execute("INSERT INTO " + self.db + "." + table_name + " values (" + data_value + ");",
-                                  log_query=False)
+                insert_queries.append("INSERT IGNORE INTO " + self.db + "." + table_name +
+                                      " values (" + data_value + ");")
+            self.node.execute_queries(insert_queries, log_queries=False, commit=True)
 
     def drop_table(self):
         for i in range(self.table_count):

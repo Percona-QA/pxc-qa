@@ -130,10 +130,10 @@ class DbConnection:
             if connection is not None:
                 print("not closing existing connection")
 
-    def execute_queries(self, queries: list[str]):
+    def execute_queries(self, queries: list[str], log_queries=True, commit=False):
         cnx = None
         try:
-            if self.__debug == 'YES':
+            if self.__debug == 'YES' and log_queries:
                 print("Queries to execute :")
                 for query in queries:
                     print(query)
@@ -141,6 +141,8 @@ class DbConnection:
             cursor = cnx.cursor(buffered=True)
             for query in queries:
                 self._execute(cursor, query)
+            if commit:
+                cnx.commit()
         finally:
             if cnx is not None and cnx.is_connected():
                 cnx.close()
