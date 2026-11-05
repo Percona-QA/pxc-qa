@@ -80,7 +80,7 @@ class PXCUpgrade(BaseTest):
             # equivalent) that needs a longer timeout in join_higher_version_node.
             sst_extra_conf = {'post-processing-timeout': 1200} if upgrade_type == 'readwrite_sst' else None
             if 'readwrite' in upgrade_type:
-                pxc_startup.StartCluster.upgrade_pxc_node(node, debug, node_to_add_load, cnf_replace, 1500,
+                pxc_startup.StartCluster.upgrade_pxc_node(node, debug, node_to_add_load, cnf_replace, 3600,
                                                           sst_extra_conf=sst_extra_conf)
             else:
                 pxc_startup.StartCluster.upgrade_pxc_node(node, debug, node_to_add_load, cnf_replace,

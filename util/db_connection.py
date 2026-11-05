@@ -99,8 +99,8 @@ class DbConnection:
             if connection is not None and connection.is_connected():
                 connection.close()
 
-    def test_connection_check(self):
-        result = self.connection_check(retries=5, retry_wait=2)
+    def test_connection_check(self, retries: int = 5, retry_wait: int = 2):
+        result = self.connection_check(retries=retries, retry_wait=retry_wait)
         # print testcase status based on success/failure output.
         now = datetime.now().strftime("%H:%M:%S ")
         if result == 0:
