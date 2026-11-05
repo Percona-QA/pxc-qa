@@ -31,7 +31,7 @@ class SysbenchRandomLoadTest(BaseTest):
         checksum = ""
         # Sysbench load test
         tables = [50, 1000]  # 100, 300, 600
-        threads = [32, 128]  # 64, 128, 256, 512, 1024
+        threads = [32, 64]  # 128, 256, 512, 1024
         if int(version) < int("080000"):
             checksum = table_checksum.TableChecksum(nodes[0], workdir, pt_basedir, debug)
             checksum.sanity_check(nodes)

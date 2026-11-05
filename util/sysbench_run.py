@@ -31,6 +31,10 @@ GALERA_WRITE_CONFLICT_ERRORS = "1213,1020,1205,1180"
 SYSBENCH_RUN_TIMEOUT = 120 * 60
 # Seconds to poll after launching background sysbench before treating launch as successful.
 SYSBENCH_LAUNCH_CHECK_TIMEOUT = 2
+# Background sysbench can fail to connect to a node transiently (e.g. a node still busy
+# applying a backlog); relaunch it a few times before failing the test.
+SYSBENCH_LAUNCH_RETRIES = 3
+SYSBENCH_LAUNCH_RETRY_WAIT = 5
 
 
 class SysbenchRun:
@@ -73,7 +77,8 @@ class SysbenchRun:
                 'threads': str(threads),
                 'db': db,
                 'socket': self.__node.get_socket(),
-                'log-file': self.__log_dir + log_name,
+                # Per-node log name: runs started on several nodes at once must not share a log file.
+                'log-file': self.__log_dir + log_name.replace('.log', '_node' + str(self.__node.get_node_number()) + '.log'),
                 'user': SYSBENCH_USER,
                 'password': SYSBENCH_PASS}
 
@@ -86,7 +91,7 @@ class SysbenchRun:
                  "--mysql-user={user} --mysql-password={password} --db-driver=mysql "
                  "--mysql-socket={socket} {extra_options} prepare > {log-file}").format(**params)
 
-        return self.execute_sysbench_query(query)
+        return self.execute_sysbench_query(query, log_file=params['log-file'])
 
     def test_sysbench_load(self, db, tables=SYSBENCH_TABLE_COUNT, threads=SYSBENCH_THREADS,
                            table_size=SYSBENCH_NORMAL_TABLE_SIZE, use_load_table_size: bool = False,
@@ -156,7 +161,7 @@ class SysbenchRun:
                           ",idx_updates:" + str(index_update) + \
                           ", non_idx_updates:" + str(non_index_update)
 
-            if self.execute_sysbench_query(query) != 0:
+            if self.execute_sysbench_query(query, log_file=params['log-file']) != 0:
                 print("ERROR!: sysbench read only(" + combination + ") run is failed")
                 exit(1)
             else:
@@ -196,7 +201,7 @@ class SysbenchRun:
                           ", point_selects:" + params['point_selects'] + \
                           ", order_rng:" + params['order_ranges']
 
-            if self.execute_sysbench_query(query) != 0:
+            if self.execute_sysbench_query(query, log_file=params['log-file']) != 0:
                 print("ERROR!: sysbench read only(" + combination + ") run is failed")
                 exit(1)
             else:
@@ -211,7 +216,7 @@ class SysbenchRun:
                  "--mysql-user={user} --mysql-password={password} --db-driver=mysql "
                  "--mysql-socket={socket} cleanup > {log-file}").format(**params)
 
-        return self.execute_sysbench_query(query)
+        return self.execute_sysbench_query(query, log_file=params['log-file'])
 
     def test_sysbench_cleanup(self, db, tables, threads, table_size):
         result = self.sysbench_cleanup(db, tables, threads, table_size)
@@ -240,7 +245,7 @@ class SysbenchRun:
                  ignore_errors_option +
                  " --time={time} --db-ps-mode=disable run > {log-file}").format(**params)
 
-        return self.execute_sysbench_query(query, background=background)
+        return self.execute_sysbench_query(query, background=background, log_file=params['log-file'])
 
     def test_sysbench_oltp_read_write(self, db, tables=SYSBENCH_TABLE_COUNT, threads=SYSBENCH_THREADS,
                                       table_size=SYSBENCH_NORMAL_TABLE_SIZE, time=SYSBENCH_RUN_TIME,
@@ -264,7 +269,7 @@ class SysbenchRun:
                  "--mysql-user={user} --mysql-password={password} --db-driver=mysql "
                  "--mysql-socket={socket} --time={time} --db-ps-mode=disable run > {log-file}").format(**params)
 
-        return self.execute_sysbench_query(query, background=background)
+        return self.execute_sysbench_query(query, background=background, log_file=params['log-file'])
 
     def test_sysbench_oltp_read_only(self, db, table_count, threads, table_size, time, background=False):
         result = self.sysbench_oltp_read_only(db, table_count, threads, table_size, time, background)
@@ -286,7 +291,7 @@ class SysbenchRun:
                  "--mysql-user={user} --mysql-password={password} --db-driver=mysql "
                  "--mysql-socket={socket} --time={time} --db-ps-mode=disable run > {log-file}").format(**params)
 
-        return self.execute_sysbench_query(query, background=background)
+        return self.execute_sysbench_query(query, background=background, log_file=params['log-file'])
 
     def sysbench_custom_table(self, db, table_count, thread, table_size):
         table_format = ['DEFAULT', 'DYNAMIC', 'FIXED', 'COMPRESSED', 'REDUNDANT', 'COMPACT']
@@ -328,25 +333,48 @@ class SysbenchRun:
                  "--mysql-user={user} --mysql-password={password} --db-driver=mysql "
                  "--mysql-socket={socket} --time={time} --db-ps-mode=disable run > {log-file}").format(**params)
 
-        return self.execute_sysbench_query(query, background=background)
+        return self.execute_sysbench_query(query, background=background, log_file=params['log-file'])
 
-    def execute_sysbench_query(self, query, background: bool = False):
+    @staticmethod
+    def launch_background_sysbench(full_cmd):
+        """ Launch sysbench in the background; non-zero if it exits with an error
+            within SYSBENCH_LAUNCH_CHECK_TIMEOUT (typically a connection failure).
+        """
+        process = subprocess.Popen(full_cmd, shell=True, start_new_session=True, stderr=subprocess.STDOUT)
+        deadline = time.time() + SYSBENCH_LAUNCH_CHECK_TIMEOUT
+        while time.time() < deadline:
+            returncode = process.poll()
+            if returncode is not None:
+                return returncode
+            time.sleep(0.2)
+        return 0
+
+    @staticmethod
+    def print_log_tail(log_file, lines: int = 20):
+        if log_file is None or not os.path.isfile(log_file):
+            return
+        with open(log_file, errors='replace') as log:
+            tail = log.readlines()[-lines:]
+        print("Last " + str(len(tail)) + " lines of " + log_file + ":")
+        print(''.join(tail).rstrip())
+
+    def execute_sysbench_query(self, query, background: bool = False, log_file=None):
         full_cmd = EXPORT_LUA_PATH + "; exec " + query.strip()
         if self.__debug == 'YES':
             print(full_cmd)
-        process = subprocess.Popen(full_cmd, shell=True, start_new_session=True, stderr=subprocess.STDOUT)
 
         if background:
-            deadline = time.time() + SYSBENCH_LAUNCH_CHECK_TIMEOUT
-            while time.time() < deadline:
-                returncode = process.poll()
-                if returncode is not None:
-                    if returncode != 0:
-                        print("ERROR!: sysbench failed on launch")
-                        return 1
+            for attempt in range(1, SYSBENCH_LAUNCH_RETRIES + 1):
+                if self.launch_background_sysbench(full_cmd) == 0:
                     return 0
-                time.sleep(0.2)
-            return 0
+                print("ERROR!: sysbench failed on launch (attempt " + str(attempt) + "/" +
+                      str(SYSBENCH_LAUNCH_RETRIES) + ")")
+                self.print_log_tail(log_file)
+                if attempt < SYSBENCH_LAUNCH_RETRIES:
+                    time.sleep(SYSBENCH_LAUNCH_RETRY_WAIT)
+            return 1
+
+        process = subprocess.Popen(full_cmd, shell=True, start_new_session=True, stderr=subprocess.STDOUT)
 
         try:
             returncode = process.wait(timeout=SYSBENCH_RUN_TIMEOUT)
@@ -360,6 +388,7 @@ class SysbenchRun:
             return 1
         if returncode != 0:
             print("ERROR!: sysbench run is failed")
+            self.print_log_tail(log_file)
             return 1
         return 0
 

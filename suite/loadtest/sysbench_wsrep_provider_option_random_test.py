@@ -53,7 +53,7 @@ class WSREPProviderRandomTest(BaseTest):
             print("Sysbench pid : " + sysbench_pid)
             time.sleep(100)
             self.node2.shutdown()
-            time.sleep(20)
+            time.sleep(60)
             utility_cmd.kill_process(sysbench_pid, "sysbench", True)
             utility_cmd.restart_and_check_node(self.node2)
             utility_cmd.wait_for_wsrep_status(self.node2)

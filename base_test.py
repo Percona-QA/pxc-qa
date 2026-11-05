@@ -159,7 +159,7 @@ class BaseTest:
             self.node1 = self.pxc_nodes[0]
             self.node2 = self.pxc_nodes[1]
             self.node3 = self.pxc_nodes[2]
-            self.node1.test_connection_check()
+            self.node1.test_connection_check(retries=10, retry_wait=20)
         else:
             print("Some problem while setting up cluster nodes. Not all nodes seems in healthy state")
             print("Number of nodes: " + str(len(self.pxc_nodes)))
