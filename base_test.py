@@ -194,8 +194,11 @@ class BaseTest:
     def shutdown_nodes(self, nodes=None):
         if nodes is None:
             nodes = self.pxc_nodes
-        for node in nodes:
-            node.shutdown()
+        # Send SHUTDOWN to every node first, then wait for each to exit,
+        # so the nodes stop in parallel rather than one after another.
+        pids = [(node, node.request_shutdown()[1]) for node in nodes]
+        for node, pid in pids:
+            node.wait_for_shutdown(pid)
 
     def set_extra_conf_file(self, conf_file):
         self.__extra_config_file = conf_file
