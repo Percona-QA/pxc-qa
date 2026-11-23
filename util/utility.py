@@ -188,20 +188,68 @@ class Utility:
             return ""
         return "{:02d}{:02d}{:02d}".format(int(parts[0]), int(parts[1]), int(parts[2]))
 
-    def test_table_count(self, node1: DbConnection, node2: DbConnection, db):
-        """ This method will compare the table
-            count between two nodes
+    @staticmethod
+    def table_checksums(node: DbConnection, db: str) -> dict:
+        """ Return {table_name: checksum} for every base table in `db` on `node`.
+            CHECKSUM TABLE returns (Table, Checksum) rows, so the checksum
+            is the second column; the first is just the qualified table name.
+            The checksum is None when the server could not compute one.
+            Views are skipped: they hold no data and always checksum to NULL.
         """
-        result = 0
-        tables = node1.execute_get_values("show tables in " + db)
-        # Compare the table checksum between node1 and node2
-        for table in tables:
-            table_count_node1 = node1.execute_get_value('checksum table ' + db + '.' + table[0], 4)
-            table_count_node2 = node2.execute_get_value('checksum table ' + db + '.' + table[0], 7)
-            if table_count_node1 != table_count_node2:
-                print("\tTable(" + db + '.' + table[0] + " ) checksum is different")
-                result = 1
-        self.check_testcase(result, "Checksum run for DB: " + db)
+        checksums = {}
+        for row in node.execute_get_values("show full tables in `" + db + "` where Table_type = 'BASE TABLE'"):
+            table = row[0]
+            rows = node.execute_get_values("checksum table `" + db + "`.`" + table + "`")
+            checksums[table] = rows[0][1] if rows else None
+        return checksums
+
+    @staticmethod
+    def checksum_mismatches(checksums1: dict, checksums2: dict, db: str,
+                            name1: str = 'node1', name2: str = 'node2') -> list:
+        """ Describe every difference between two table_checksums() results:
+            tables present on only one node, tables whose checksum is unavailable
+            on either node (two missing checksums prove nothing), and tables
+            whose checksums differ.
+        """
+        mismatches = []
+        for table in sorted(set(checksums1) | set(checksums2)):
+            if table not in checksums2:
+                mismatches.append("Table(" + db + '.' + table + ") exists only on " + name1)
+            elif table not in checksums1:
+                mismatches.append("Table(" + db + '.' + table + ") exists only on " + name2)
+            elif checksums1[table] is None or checksums2[table] is None:
+                unavailable = [name for name, value in ((name1, checksums1[table]), (name2, checksums2[table]))
+                               if value is None]
+                mismatches.append("Table(" + db + '.' + table + ") checksum is unavailable on "
+                                  + " and ".join(unavailable))
+            elif checksums1[table] != checksums2[table]:
+                mismatches.append("Table(" + db + '.' + table + ") checksum is different: " + name1 + "="
+                                  + str(checksums1[table]) + " " + name2 + "=" + str(checksums2[table]))
+        return mismatches
+
+    def test_table_count(self, node1: DbConnection, node2: DbConnection, db,
+                         attempts: int = 6, retry_wait: int = 5):
+        """ Compare the table list and CHECKSUM TABLE of every table in `db`
+            between node1 and node2. A receiving node applies write-sets
+            slightly after the commit on the source node, so a mismatch is
+            re-checked up to `attempts` times before it is reported.
+        """
+        if attempts < 1:
+            raise ValueError("attempts must be at least 1")
+        name1 = 'node' + str(node1.get_node_number())
+        name2 = 'node' + str(node2.get_node_number())
+        mismatches = []
+        for attempt in range(1, attempts + 1):
+            mismatches = self.checksum_mismatches(self.table_checksums(node1, db),
+                                                  self.table_checksums(node2, db), db, name1, name2)
+            if not mismatches or attempt == attempts:
+                break
+            print("Checksum mismatch in DB " + db + " between " + name1 + " and " + name2 + " (attempt " + str(attempt) + "/" + str(attempts)
+                  + "), re-checking in " + str(retry_wait) + "s")
+            time.sleep(retry_wait)
+        for mismatch in mismatches:
+            print("\t" + mismatch)
+        self.check_testcase(1 if mismatches else 0, "Checksum run for DB: " + db)
 
     def ensure_replica_running(self, node: DbConnection, channel: str = ''):
         """ Explicitly (re)start replication threads for a channel.
