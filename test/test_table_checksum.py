@@ -44,8 +44,9 @@ class FakeNode:
         return self.node_number
 
     def execute_get_values(self, query):
-        if query.lower().startswith('show tables in'):
-            return [(table,) for table in self.checksums]
+        if query.lower().startswith('show full tables in'):
+            assert query.endswith("where Table_type = 'BASE TABLE'"), query
+            return [(table, 'BASE TABLE') for table in self.checksums]
         if query.lower().startswith('checksum table'):
             table = query.split('.')[-1].strip('`')
             db = query.split()[2].split('.')[0].strip('`')
@@ -80,6 +81,23 @@ class TestTableCount(unittest.TestCase):
     def test_table_only_on_node2_fails(self):
         # The old implementation only listed node1's tables, so this passed.
         self.assertEqual(self.run_check({'t1': 111}, {'t1': 111, 't2': 222}), 1)
+
+    def test_checksum_unavailable_on_both_nodes_fails(self):
+        # NULL == NULL must not count as matching data.
+        self.assertEqual(self.run_check({'t1': None}, {'t1': None}), 1)
+
+    def test_checksum_unavailable_on_one_node_fails(self):
+        self.assertEqual(self.run_check({'t1': 111}, {'t1': None}), 1)
+
+    def test_nonpositive_attempts_rejected(self):
+        utility = Utility('NO')
+        for attempts in (0, -1):
+            with self.subTest(attempts=attempts), \
+                    mock.patch.object(Utility, 'check_testcase') as check_testcase:
+                with self.assertRaises(ValueError):
+                    utility.test_table_count(FakeNode({'t1': 1}, 1), FakeNode({'t1': 2}, 2), 'test',
+                                             attempts=attempts)
+                check_testcase.assert_not_called()
 
     def test_message_names_the_nodes_compared(self):
         utility = Utility('NO')
