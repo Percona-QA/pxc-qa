@@ -16,7 +16,9 @@ import re
 CRASH_PATTERNS = [
     ('mysqld crashed on a signal', re.compile(r'mysqld got signal \d+')),
     ('assertion failure', re.compile(r'Assertion failure:|Assertion `.*\' failed')),
-    ('sanitizer report', re.compile(r'(Address|Thread|Memory|Leak)Sanitizer|runtime error: ')),
+    # Sanitizer reports start with "ERROR: <Name>Sanitizer: " or "WARNING: <Name>Sanitizer: ";
+    # informational lines such as "INFO: AddressSanitizer ignores mlock/..." do not.
+    ('sanitizer report', re.compile(r'(ERROR|WARNING): (Address|Thread|Memory|Leak)Sanitizer: |runtime error: ')),
     ('uncaught C++ exception', re.compile(r'terminate called after throwing')),
     ('InnoDB corruption', re.compile(r'\[ERROR\].*\[InnoDB\].*[Cc]orrupt|Database page corruption')),
     ('Galera inconsistency', re.compile(r'Inconsistency detected|Node consistency compromised')),
@@ -28,7 +30,7 @@ CRASH_PATTERNS = [
 ALLOWED_PATTERNS = []
 
 # Files in a worker's log directory that mysqld writes to.
-ERROR_LOG_GLOBS = ['*.err', 'init*.log']
+ERROR_LOG_GLOBS = ['*.err', 'init*.log', 'ps_init*.log']
 
 MAX_FINDINGS_PER_FILE = 10
 

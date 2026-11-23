@@ -25,6 +25,9 @@ CRASH_LINES = [
     'lock0lock.cc:336:lock_latest_err_file thread 127909209216704',
     "mysqld: /src/sql/handler.cc:123: int foo(): Assertion `thd != nullptr' failed.",
     '==12345==ERROR: AddressSanitizer: heap-use-after-free on address 0x6020',
+    '==12345==ERROR: LeakSanitizer: detected memory leaks',
+    'WARNING: ThreadSanitizer: data race (pid=12345)',
+    '==12345==WARNING: MemorySanitizer: use-of-uninitialized-value',
     '/src/storage/innobase/row/row0mysql.cc:42:7: runtime error: signed integer overflow',
     "terminate called after throwing an instance of 'std::bad_alloc'",
     '2026-11-23T20:51:15Z 0 [ERROR] [MY-012153] [InnoDB] Database page corruption on disk or a failed file read',
@@ -39,6 +42,9 @@ CLEAN_LINES = [
     'InnoDB: corruption in the InnoDB tablespace. Please refer to',
     '2026-11-23T20:51:09Z 0 [Note] [MY-012550] [InnoDB] Database was not shutdown normally!',
     '2026-11-23T20:51:15Z 0 [Note] [MY-000000] [Galera] Received SELF-LEAVE. Closing connection.',
+    # Informational sanitizer output, not a report.
+    '==12345==INFO: AddressSanitizer ignores mlock/mlockall/munlock/munlockall',
+    '==12345==WARNING: AddressSanitizer failed to allocate 0x10000000000 bytes',
 ]
 
 
@@ -78,15 +84,17 @@ class TestScanErrorLog(unittest.TestCase):
         self.write('node2.err', [CRASH_LINES[0]])
         self.write('psnode1.err', [CRASH_LINES[1]])
         self.write('init3.log', [CRASH_LINES[2]])
+        self.write('ps_init1.log', [CRASH_LINES[3]])
         self.write('node1.err', CLEAN_LINES)
         self.write('sysbench.log', [CRASH_LINES[0]])
         results = error_log.scan_error_logs(self.log_dir)
         self.assertEqual(sorted(os.path.basename(p) for p in results),
-                         ['init3.log', 'node2.err', 'psnode1.err'])
+                         ['init3.log', 'node2.err', 'ps_init1.log', 'psnode1.err'])
 
     def test_clear_removes_only_error_logs(self):
         self.write('node1.err', CLEAN_LINES)
         self.write('init1.log', CLEAN_LINES)
+        self.write('ps_init1.log', CLEAN_LINES)
         self.write('sysbench.log', CLEAN_LINES)
         error_log.clear_error_logs(self.log_dir)
         self.assertEqual(os.listdir(self.log_dir), ['sysbench.log'])
