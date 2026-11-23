@@ -401,7 +401,9 @@ class StartCluster:
                        ' --wsrep-provider=' + base_dir + '/lib/libgalera_smm.so')
             if i == 1:
                 startup = startup + ' --wsrep-new-cluster'
-            startup = startup + ' --log-error=' + err_log + ' > ' + err_log + ' 2>&1'
+            # Append, not truncate: restarts rerun this command from the startup script,
+            # and the test runner scans the whole log for crashes after the test.
+            startup = startup + ' --log-error=' + err_log + ' >> ' + err_log + ' 2>&1'
 
             save_startup = 'echo "' + startup + '" > ' + startup_script
             os.system(save_startup)

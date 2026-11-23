@@ -226,7 +226,7 @@ class StartPerconaServer:
             datadir = self.node_datadir(i)
             # Start server
             startup = (mysqld + ' --defaults-file=' + conf + ' --datadir=' + datadir + ' --basedir=' + base_dir +
-                       ' ' + my_extra + ' --log-error=' + err_log + ' > ' + err_log + ' 2>&1')
+                       ' ' + my_extra + ' --log-error=' + err_log + ' >> ' + err_log + ' 2>&1')
             if self.__debug == 'YES':
                 print(startup)
             launch_result = launch_server(startup)
