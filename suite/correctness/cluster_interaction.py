@@ -92,6 +92,8 @@ class ClusterInteraction(BaseTest):
         if debug == 'YES':
             print("shutdown node3")
         self.node3.shutdown()
+        # Keep node3 down while sysbench keeps writing, so it must rejoin via IST.
+        # shutdown() already waits for mysqld to exit; this is not a shutdown wait.
         time.sleep(30)
         utility_cmd.kill_process(sysbench_pid, "sysbench run")
         utility_cmd.restart_cluster_node(self.node3)

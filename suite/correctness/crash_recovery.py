@@ -56,6 +56,8 @@ class CrashRecovery(BaseTest):
         elif test_name == "single_restart":
             time.sleep(10)
             result = self.node3.shutdown()
+            # Keep node3 down while sysbench keeps writing, so it must catch up on rejoin.
+            # shutdown() already waits for mysqld to exit; this is not a shutdown wait.
             time.sleep(60)
             if debug == 'YES':
                 print("Shutdown node " + str(self.node3.get_node_number()))

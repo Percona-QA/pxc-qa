@@ -53,6 +53,8 @@ class WSREPProviderRandomTest(BaseTest):
             print("Sysbench pid : " + sysbench_pid)
             time.sleep(100)
             self.node2.shutdown()
+            # Keep node2 down while sysbench keeps writing, so it must catch up on rejoin.
+            # shutdown() already waits for mysqld to exit; this is not a shutdown wait.
             time.sleep(60)
             utility_cmd.kill_process(sysbench_pid, "sysbench", True)
             utility_cmd.restart_and_check_node(self.node2)
