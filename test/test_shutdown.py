@@ -140,6 +140,20 @@ class TestShutdown(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertFalse(process_running(self.proc.pid))
 
+    def test_pid_lookup_timeout_is_raised_not_reported_as_success(self):
+        node = DbConnection(user='root', socket='/nonexistent', node_num=1, data_dir=self.tmp.name)
+        cursor = FakeCursor(self.pid_file, lambda: None)
+
+        def hung_execute(_self, cur, query):
+            cur.queries.append(query)
+            raise db_connection.QueryTimeoutError('select timed out')
+
+        with mock.patch.object(DbConnection, 'connect', return_value=FakeCnx(cursor)), \
+                mock.patch.object(DbConnection, '_execute', hung_execute):
+            with self.assertRaises(db_connection.QueryTimeoutError):
+                node.shutdown(timeout=1)
+        self.assertEqual(cursor.queries, ['select @@pid_file'])
+
     def test_unreadable_pid_file_falls_back_to_old_behaviour(self):
         self.pid_file = os.path.join(self.tmp.name, 'missing.pid')
         result, cursor = self.shutdown(lambda: None, timeout=1)

@@ -273,6 +273,9 @@ class DbConnection:
                 pid_file = os.path.join(self.__data_dir, pid_file)
             with open(pid_file) as handle:
                 return int(handle.read().strip())
+        except QueryTimeoutError:
+            # The server is not responding; let request_shutdown() report it.
+            raise
         except Exception as e:
             print("Could not read the pid of node" + str(self.__node_num) + ": " + str(e))
             return None
