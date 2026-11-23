@@ -207,12 +207,25 @@ class BaseTest:
             nodes = self.pxc_nodes
         # Send SHUTDOWN to every node first, then wait for each to exit,
         # so the nodes stop in parallel rather than one after another.
-        pids = [(node, node.request_shutdown()[1]) for node in nodes]
-        failed = [node for node, pid in pids if node.wait_for_shutdown(pid) != 0]
+        # A failure on one node must not stop the others from being shut down.
+        failed = []
+        pids = []
+        for node in nodes:
+            try:
+                pids.append((node, node.request_shutdown()[1]))
+            except Exception as e:
+                print("Shutdown request failed for node" + str(node.get_node_number()) + ": " + str(e))
+                failed.append(node)
+        for node, pid in pids:
+            try:
+                if node.wait_for_shutdown(pid) != 0:
+                    failed.append(node)
+            except Exception as e:
+                print("Waiting for node" + str(node.get_node_number()) + " to shut down failed: " + str(e))
+                failed.append(node)
         if failed:
             names = ', '.join('node' + str(node.get_node_number()) for node in failed)
-            utility_cmd.check_testcase(1, "Clean shutdown of " + names + " (killed after timeout)",
-                                       terminate_on_failure)
+            utility_cmd.check_testcase(1, "Clean shutdown of " + names, terminate_on_failure)
             return 1
         return 0
 
