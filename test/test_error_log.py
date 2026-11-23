@@ -107,14 +107,43 @@ class TestScanErrorLog(unittest.TestCase):
         self.assertEqual(lines[-1], '  ... 5 more')
 
 
+class TestWaitForServers(unittest.TestCase):
+
+    PGREP = ('101 /pxc/bin/mysqld --defaults-file=/qa/conf/node1.cnf --datadir=/qa/node1\n'
+             '102 /pxc/bin/mysqld --defaults-file=/qa/w1/conf/node1.cnf --datadir=/qa/w1/node1\n'
+             '103 /pxc/bin/mysqld --defaults-file=/qa/conf/ps1.cnf --datadir=/qa/psnode1\n'
+             '104 /usr/sbin/mysqld --defaults-file=/etc/mysql/my.cnf\n')
+
+    def test_only_this_workers_servers_are_matched(self):
+        with mock.patch.object(error_log.subprocess, 'run',
+                               return_value=mock.Mock(stdout=self.PGREP)):
+            self.assertEqual(error_log.worker_server_pids('/qa'), [101, 103])
+            self.assertEqual(error_log.worker_server_pids('/qa/w1/'), [102])
+
+    def test_waits_for_servers_that_exit(self):
+        running = [[101], [101], []]
+        with mock.patch.object(error_log, 'worker_server_pids', side_effect=lambda d: running.pop(0)), \
+                mock.patch.object(error_log.time, 'sleep'), \
+                mock.patch.object(error_log.os, 'kill') as kill:
+            self.assertEqual(error_log.wait_for_servers_to_exit('/qa', timeout=60), [])
+        kill.assert_not_called()
+
+    def test_kills_servers_still_running_after_timeout(self):
+        with mock.patch.object(error_log, 'worker_server_pids', side_effect=[[101], [101], []]), \
+                mock.patch.object(error_log.time, 'sleep'), \
+                mock.patch.object(error_log.os, 'kill') as kill:
+            self.assertEqual(error_log.wait_for_servers_to_exit('/qa', timeout=0), [101])
+        kill.assert_called_once_with(101, error_log.signal.SIGKILL)
+
+
 class TestHandleTestResult(unittest.TestCase):
 
-    def handle(self, result, crash_findings):
+    def handle(self, result, crash_findings, killed_pids=None):
         with mock.patch.object(qa_framework, 'print_failed_test_log'), \
                 mock.patch.object(qa_framework.os, 'system'), \
                 mock.patch('sys.stdout', new_callable=io.StringIO) as out:
             failed = qa_framework.handle_test_result(io.StringIO(), 0, 'correctness', 'x.py', result,
-                                                     1, crash_findings)
+                                                     1, crash_findings, killed_pids)
         return failed, out.getvalue()
 
     def test_passing_test_with_crash_fails(self):
@@ -127,6 +156,11 @@ class TestHandleTestResult(unittest.TestCase):
         failed, _ = self.handle(qa_framework.SKIP_TEST_EXIT_CODE,
                                 {'/w/log/node1.err': [(1, 'assertion failure', CRASH_LINES[1])]})
         self.assertTrue(failed)
+
+    def test_killed_servers_are_reported(self):
+        failed, out = self.handle(0, {}, killed_pids=[101])
+        self.assertFalse(failed)
+        self.assertIn('Killed mysqld process(es) still running', out)
 
     def test_passing_test_without_crash_passes(self):
         failed, out = self.handle(0, {})

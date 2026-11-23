@@ -11,6 +11,9 @@ tests routinely provoke expected errors (bad options, refused SST, etc.).
 import glob
 import os
 import re
+import signal
+import subprocess
+import time
 
 # (description, pattern) pairs. Each pattern is matched against one log line.
 CRASH_PATTERNS = [
@@ -33,6 +36,10 @@ ALLOWED_PATTERNS = []
 ERROR_LOG_GLOBS = ['*.err', 'init*.log', 'ps_init*.log']
 
 MAX_FINDINGS_PER_FILE = 10
+
+# How long the runner waits for a finished test's mysqld processes to exit
+# before scanning their logs.
+SERVER_EXIT_TIMEOUT = 120
 
 
 def scan_error_log(path, allowed_patterns=None):
@@ -83,3 +90,35 @@ def clear_error_logs(log_dir):
     """Remove error logs left by the previous test in this log directory."""
     for path in error_log_files(log_dir):
         os.remove(path)
+
+
+def worker_server_pids(worker_dir):
+    """Pids of mysqld processes started with a config file from this worker's conf/ directory."""
+    marker = '--defaults-file=' + worker_dir.rstrip('/') + '/conf/'
+    try:
+        output = subprocess.run(['pgrep', '-a', 'mysqld'], capture_output=True, text=True).stdout
+    except FileNotFoundError:
+        return []
+    return [int(line.split()[0]) for line in output.splitlines() if marker in line]
+
+
+def wait_for_servers_to_exit(worker_dir, timeout=SERVER_EXIT_TIMEOUT, poll_interval=1):
+    """Wait until no mysqld from this worker is running, so their error logs are
+    complete before they are scanned: a crash during shutdown is written after
+    SHUTDOWN returns. Servers still running after `timeout` seconds are killed
+    with SIGKILL so they can't leak into the next test. Returns the killed pids.
+    """
+    deadline = time.monotonic() + timeout
+    pids = worker_server_pids(worker_dir)
+    while pids and time.monotonic() < deadline:
+        time.sleep(poll_interval)
+        pids = worker_server_pids(worker_dir)
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    kill_deadline = time.monotonic() + 30
+    while pids and worker_server_pids(worker_dir) and time.monotonic() < kill_deadline:
+        time.sleep(poll_interval)
+    return pids
