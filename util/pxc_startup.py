@@ -363,10 +363,10 @@ class StartCluster:
             if int(version) < int("050700"):
                 os.mkdir(datadir)
                 initialize_node = (base_dir + '/scripts/mysql_install_db --no-defaults --basedir=' + base_dir +
-                                   ' --datadir=' + datadir + ' > ' + initialize_log + ' 2>&1')
+                                   ' --datadir=' + datadir + ' >> ' + initialize_log + ' 2>&1')
             else:
                 initialize_node = (base_dir + '/bin/mysqld --no-defaults --initialize-insecure ' + init_extra +
-                                   ' --basedir=' + base_dir + ' --datadir=' + datadir + ' > ' + initialize_log +
+                                   ' --basedir=' + base_dir + ' --datadir=' + datadir + ' >> ' + initialize_log +
                                    ' 2>&1')
             if self.__debug == 'YES':
                 print(initialize_node)
@@ -401,7 +401,9 @@ class StartCluster:
                        ' --wsrep-provider=' + base_dir + '/lib/libgalera_smm.so')
             if i == 1:
                 startup = startup + ' --wsrep-new-cluster'
-            startup = startup + ' --log-error=' + err_log + ' > ' + err_log + ' 2>&1'
+            # Append, not truncate: restarts rerun this command from the startup script,
+            # and the test runner scans the whole log for crashes after the test.
+            startup = startup + ' --log-error=' + err_log + ' >> ' + err_log + ' 2>&1'
 
             save_startup = 'echo "' + startup + '" > ' + startup_script
             os.system(save_startup)

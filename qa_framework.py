@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 from config import *
+from util import error_log
 
 workdir = WORKDIR
 
@@ -200,10 +201,19 @@ def run_test(test_file, suite_name, encryption, tc_output, debug, worker_id=0):
         cmd = cmd + ' ' + worker_option
     if debug:
         log_output("Running test : " + cmd, tc_output)
+    # Node error logs are appended to across restarts, so start each test
+    # with none: the scan afterwards then only sees this test's output.
+    log_dir = get_worker_thread_dir(worker_id) + '/log'
+    error_log.clear_error_logs(log_dir)
     start_time = time.monotonic()
     result = subprocess.call(cmd, shell=True)
     duration = time.monotonic() - start_time
-    return worker_id, suite_name, os.path.basename(test_file), result, duration
+    # Let the test's servers finish shutting down first, or a crash during
+    # shutdown could land in the log after the scan.
+    killed_pids, surviving_pids = error_log.wait_for_servers_to_exit(get_worker_thread_dir(worker_id))
+    crash_findings = error_log.scan_error_logs(log_dir)
+    return (worker_id, suite_name, os.path.basename(test_file), result, duration, crash_findings, killed_pids,
+            surviving_pids)
 
 
 def run_worker_tests(worker_id, test_queue, encryption, debug, tc_output, output_lock):
@@ -229,7 +239,15 @@ def format_duration(duration):
     return f'{hours:02d}:{minutes:02d}:{seconds:02d}'
 
 
-def handle_test_result(tc_output, worker_id, suite_name, file, result, duration=0):
+def handle_test_result(tc_output, worker_id, suite_name, file, result, duration=0, crash_findings=None,
+                       killed_pids=None, surviving_pids=None):
+    if crash_findings and (result == 0 or result == SKIP_TEST_EXIT_CODE):
+        # The test itself passed, but a node crashed or reported corruption
+        # or inconsistency along the way.
+        result = 1
+    if surviving_pids and (result == 0 or result == SKIP_TEST_EXIT_CODE):
+        # A server outlived SIGKILL; the next test in this worker would share its files.
+        result = 1
     worker = ''
     if worker_id > 0:
         worker = 'w' + str(worker_id) + ' '
@@ -242,6 +260,16 @@ def handle_test_result(tc_output, worker_id, suite_name, file, result, duration=
     else:
         output = 'Test ' + f'{test_name:60}' + worker + elapsed + '[Fail]'
     log_output(output, tc_output)
+    if killed_pids:
+        log_output('Killed mysqld process(es) still running ' + str(error_log.SERVER_EXIT_TIMEOUT)
+                   + 's after the test ended: ' + ', '.join(str(pid) for pid in killed_pids), tc_output)
+    if surviving_pids:
+        log_output('mysqld process(es) still running 30s after SIGKILL: '
+                   + ', '.join(str(pid) for pid in surviving_pids)
+                   + '; the next test in this worker may share their files', tc_output)
+    if crash_findings:
+        for line in error_log.format_findings(crash_findings):
+            log_output(line, tc_output)
     if result != 0 and result != SKIP_TEST_EXIT_CODE:
         workdir = get_worker_thread_dir(worker_id)
         print_failed_test_log(tc_output, workdir, file)
