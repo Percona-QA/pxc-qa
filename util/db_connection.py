@@ -1,3 +1,5 @@
+import os
+import signal
 import time
 from datetime import datetime
 
@@ -7,6 +9,8 @@ from _mysql_connector import MySQLInterfaceError
 
 CONNECTION_TIMEOUT = 60
 QUERY_TIMEOUT = 600
+# How long shutdown() waits for mysqld to exit before killing it.
+SHUTDOWN_TIMEOUT = 120
 
 # read_timeout/write_timeout and their exceptions require mysql-connector-python 9.2.0+.
 ReadTimeoutError = getattr(mysql_errors, 'ReadTimeoutError', None)
@@ -16,6 +20,44 @@ QUERY_TIMEOUT_SUPPORTED = ReadTimeoutError is not None and WriteTimeoutError is 
 
 def _is_query_timeout(exc: BaseException) -> bool:
     return QUERY_TIMEOUT_SUPPORTED and isinstance(exc, (ReadTimeoutError, WriteTimeoutError))
+
+
+def process_running(pid: int) -> bool:
+    """ True while `pid` is a live process.
+        launch_server() starts mysqld as a direct child of the test process,
+        so an exited mysqld stays a zombie until reaped. Reap it if it is
+        our child, and treat a zombie as exited either way.
+    """
+    try:
+        reaped_pid, _ = os.waitpid(pid, os.WNOHANG)
+        if reaped_pid == pid:
+            return False
+    except ChildProcessError:
+        pass
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    try:
+        with open('/proc/' + str(pid) + '/stat') as stat_file:
+            # Format: "pid (comm) state ..."; comm can contain spaces.
+            if stat_file.read().rsplit(')', 1)[1].split()[0] == 'Z':
+                return False
+    except (OSError, IndexError):
+        pass
+    return True
+
+
+def wait_for_process_exit(pid: int, timeout: float) -> bool:
+    """ Poll until `pid` exits. Returns False if it is still running after `timeout` seconds. """
+    deadline = time.monotonic() + timeout
+    while process_running(pid):
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.5)
+    return True
 
 
 class QueryExecutionError(Exception):
@@ -222,25 +264,86 @@ class DbConnection:
             if cnx is not None and cnx.is_connected():
                 cnx.close()
 
-    def shutdown(self):
+    def _server_pid(self, cursor):
+        """ Read mysqld's pid from its pid file; None if it can't be read. """
+        try:
+            self._execute(cursor, "select @@pid_file")
+            pid_file = cursor.fetchone()[0]
+            if not os.path.isabs(pid_file) and self.__data_dir:
+                pid_file = os.path.join(self.__data_dir, pid_file)
+            with open(pid_file) as handle:
+                return int(handle.read().strip())
+        except QueryTimeoutError:
+            # The server is not responding; let request_shutdown() report it.
+            raise
+        except Exception as e:
+            print("Could not read the pid of node" + str(self.__node_num) + ": " + str(e))
+            return None
+
+    def request_shutdown(self):
+        """ Send SHUTDOWN without waiting for mysqld to exit.
+            Returns (result, pid): result is 0 unless the query timed out
+            (raised, as before); pid is None if it could not be read or the
+            server could not be reached (e.g. it is already down). If SHUTDOWN
+            fails after the pid was read, the pid is still returned so the
+            caller waits for that process.
+        """
         cnx = None
+        pid = None
         try:
             cnx = self.connect()
-            cursor = cnx.cursor()
+            cursor = cnx.cursor(buffered=True)
+            pid = self._server_pid(cursor)
             self._execute(cursor, "shutdown")
-            print("Shutdown done Node" + str(self.__node_num))
-            return 0
+            return 0, pid
         except QueryTimeoutError as query_timeout_error:
             print("Timed out while shutting down node" + str(self.__node_num) + f": {query_timeout_error}")
+            if pid is not None:
+                # The server is hung; don't leave it running.
+                print("Killing node" + str(self.__node_num) + " (pid " + str(pid) + ") with SIGKILL")
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                wait_for_process_exit(pid, 30)
             raise
         except Exception as e:
             print("Error while connecting to MySQL/Shutting down", e)
-            print(e)
-            return 0
+            return 0, pid
         finally:
             # closing database connection.
             if cnx is not None and cnx.is_connected():
                 cnx.close()
+
+    def wait_for_shutdown(self, pid, timeout: float = SHUTDOWN_TIMEOUT):
+        """ Wait for the mysqld `pid` returned by request_shutdown() to exit.
+            If it is still running after `timeout` seconds, kill it with
+            SIGKILL and return 1.
+        """
+        if pid is None:
+            return 0
+        if not wait_for_process_exit(pid, timeout):
+            print("Node" + str(self.__node_num) + " (pid " + str(pid) + ") did not exit before the shutdown"
+                  " timeout; killing it with SIGKILL")
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            wait_for_process_exit(pid, 30)
+            return 1
+        print("Shutdown done Node" + str(self.__node_num))
+        return 0
+
+    def shutdown(self, timeout: float = SHUTDOWN_TIMEOUT):
+        """ Shut the server down and wait for the mysqld process to exit, so
+            its ports, sockets, datadir and error log are free when this
+            returns. If it is still running after `timeout` seconds it is
+            killed with SIGKILL and 1 is returned.
+        """
+        result, pid = self.request_shutdown()
+        if pid is None:
+            return result
+        return self.wait_for_shutdown(pid, timeout)
 
     def execute_query_from_file(self, file_path):
         cnx = None

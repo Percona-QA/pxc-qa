@@ -4,9 +4,11 @@ import json
 import os
 import re
 import sys
+import time
 
 from config import WORKDIR, NODE, PT_BASEDIR, BASEDIR, SERVER, PXC_LOWER_BASE, PXC_UPPER_BASE, SKIP_TEST_EXIT_CODE
 from util import pxc_startup, ps_startup
+from util.db_connection import SHUTDOWN_TIMEOUT
 from util.utility import *
 
 workdir = WORKDIR
@@ -125,10 +127,17 @@ class BaseTest:
             self._shutdown_registered = True
 
     def _shutdown_on_exit(self):
+        result = 0
         if self.pxc_nodes:
-            self.shutdown_nodes(self.pxc_nodes)
+            result |= self.shutdown_nodes(self.pxc_nodes, terminate_on_failure=False)
         if self.ps_nodes:
-            self.shutdown_nodes(self.ps_nodes)
+            result |= self.shutdown_nodes(self.ps_nodes, terminate_on_failure=False)
+        if result:
+            # exit() inside an atexit handler does not change the exit status,
+            # so end the process directly to make the test fail.
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os._exit(1)
 
     def start_pxc(self, my_extra: str = None, custom_conf_settings: dict = None,
                   terminate_on_startup_failure: bool = True):
@@ -191,11 +200,39 @@ class BaseTest:
         if self.ps_nodes:
             self._register_shutdown_on_exit()
 
-    def shutdown_nodes(self, nodes=None):
+    def shutdown_nodes(self, nodes=None, terminate_on_failure: bool = True):
+        """ Shut down `nodes` and wait for every mysqld to exit. If a node had
+            to be killed after the shutdown timeout, the test fails (or, with
+            terminate_on_failure=False, 1 is returned).
+        """
         if nodes is None:
             nodes = self.pxc_nodes
+        # Send SHUTDOWN to every node first, then wait for each to exit,
+        # so the nodes stop in parallel rather than one after another.
+        # A failure on one node must not stop the others from being shut down.
+        failed = []
+        pids = []
         for node in nodes:
-            node.shutdown()
+            try:
+                pids.append((node, node.request_shutdown()[1]))
+            except Exception as e:
+                print("Shutdown request failed for node" + str(node.get_node_number()) + ": " + str(e))
+                failed.append(node)
+        # One deadline for all nodes, counted from the SHUTDOWN requests, so
+        # waiting on one node doesn't extend another node's timeout.
+        deadline = time.monotonic() + SHUTDOWN_TIMEOUT
+        for node, pid in pids:
+            try:
+                if node.wait_for_shutdown(pid, max(0.0, deadline - time.monotonic())) != 0:
+                    failed.append(node)
+            except Exception as e:
+                print("Waiting for node" + str(node.get_node_number()) + " to shut down failed: " + str(e))
+                failed.append(node)
+        if failed:
+            names = ', '.join('node' + str(node.get_node_number()) for node in failed)
+            utility_cmd.check_testcase(1, "Clean shutdown of " + names, terminate_on_failure)
+            return 1
+        return 0
 
     def set_extra_conf_file(self, conf_file):
         self.__extra_config_file = conf_file

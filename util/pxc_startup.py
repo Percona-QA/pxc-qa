@@ -608,7 +608,6 @@ class StartCluster:
             result = os.system(upgrade_cmd)
             utility_cmd.check_testcase(result, "Cluster node" + str(node.get_node_number()) + " upgrade is successful")
             node.shutdown()
-            time.sleep(30)
             utility_cmd.check_testcase(0, "Shutdown cluster node" + str(node.get_node_number()) + " after upgrade run")
             create_startup = ('sed -i  "s#' + lower_base_dir + '#' + higher_version_basedir + '#g" ' + node.get_startup_script())
             if debug == 'YES':
