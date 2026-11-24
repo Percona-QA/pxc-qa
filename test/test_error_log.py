@@ -111,13 +111,16 @@ class TestWaitForServers(unittest.TestCase):
 
     PGREP = ('101 /pxc/bin/mysqld --defaults-file=/qa/conf/node1.cnf --datadir=/qa/node1\n'
              '102 /pxc/bin/mysqld --defaults-file=/qa/w1/conf/node1.cnf --datadir=/qa/w1/node1\n'
-             '103 /pxc/bin/mysqld --defaults-file=/qa/conf/ps1.cnf --datadir=/qa/psnode1\n'
-             '104 /usr/sbin/mysqld --defaults-file=/etc/mysql/my.cnf\n')
+             '103 /pxc/bin/mysqld --defaults-file=/qa//conf/ps1.cnf --datadir=/qa//psnode1\n'
+             '104 /usr/sbin/mysqld --defaults-file=/etc/mysql/my.cnf\n'
+             '105 /pxc/bin/mysqld --defaults-file=/qa/conf/sub/x.cnf\n'
+             '106 /pxc/bin/mysqld --no-defaults --datadir=/qa/conf/\n')
 
     def test_only_this_workers_servers_are_matched(self):
         with mock.patch.object(error_log.subprocess, 'run',
                                return_value=mock.Mock(stdout=self.PGREP)):
             self.assertEqual(error_log.worker_server_pids('/qa'), [101, 103])
+            self.assertEqual(error_log.worker_server_pids('/qa/'), [101, 103])
             self.assertEqual(error_log.worker_server_pids('/qa/w1/'), [102])
 
     def test_waits_for_servers_that_exit(self):

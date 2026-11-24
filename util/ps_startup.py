@@ -190,10 +190,10 @@ class StartPerconaServer:
             if int(version) < int("050700"):
                 os.mkdir(datadir)
                 initialize_node = (base_dir + '/scripts/mysql_install_db --no-defaults --basedir=' + base_dir +
-                                   ' --datadir=' + datadir + ' > ' + initialize_log + ' 2>&1')
+                                   ' --datadir=' + datadir + ' >> ' + initialize_log + ' 2>&1')
             else:
                 initialize_node = (base_dir + '/bin/mysqld --no-defaults  --initialize-insecure --basedir=' + base_dir +
-                                   ' --datadir=' + datadir + ' > ' + initialize_log + ' 2>&1')
+                                   ' --datadir=' + datadir + ' >> ' + initialize_log + ' 2>&1')
             if self.__debug == 'YES':
                 print(initialize_node)
             run_query = subprocess.call(initialize_node, shell=True, stderr=subprocess.DEVNULL)

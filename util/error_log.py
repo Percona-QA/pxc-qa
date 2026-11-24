@@ -93,13 +93,23 @@ def clear_error_logs(log_dir):
 
 
 def worker_server_pids(worker_dir):
-    """Pids of mysqld processes started with a config file from this worker's conf/ directory."""
-    marker = '--defaults-file=' + worker_dir.rstrip('/') + '/conf/'
+    """Pids of mysqld processes started with a config file from this worker's conf/ directory.
+    Paths are normalized, since some callers build them with doubled slashes."""
+    conf_dir = os.path.normpath(os.path.join(worker_dir, 'conf'))
     try:
         output = subprocess.run(['pgrep', '-a', 'mysqld'], capture_output=True, text=True).stdout
     except FileNotFoundError:
         return []
-    return [int(line.split()[0]) for line in output.splitlines() if marker in line]
+    pids = []
+    for line in output.splitlines():
+        fields = line.split()
+        for arg in fields[1:]:
+            if arg.startswith('--defaults-file='):
+                conf_file = os.path.normpath(arg[len('--defaults-file='):])
+                if os.path.dirname(conf_file) == conf_dir:
+                    pids.append(int(fields[0]))
+                break
+    return pids
 
 
 def wait_for_servers_to_exit(worker_dir, timeout=SERVER_EXIT_TIMEOUT, poll_interval=1):

@@ -363,10 +363,10 @@ class StartCluster:
             if int(version) < int("050700"):
                 os.mkdir(datadir)
                 initialize_node = (base_dir + '/scripts/mysql_install_db --no-defaults --basedir=' + base_dir +
-                                   ' --datadir=' + datadir + ' > ' + initialize_log + ' 2>&1')
+                                   ' --datadir=' + datadir + ' >> ' + initialize_log + ' 2>&1')
             else:
                 initialize_node = (base_dir + '/bin/mysqld --no-defaults --initialize-insecure ' + init_extra +
-                                   ' --basedir=' + base_dir + ' --datadir=' + datadir + ' > ' + initialize_log +
+                                   ' --basedir=' + base_dir + ' --datadir=' + datadir + ' >> ' + initialize_log +
                                    ' 2>&1')
             if self.__debug == 'YES':
                 print(initialize_node)
