@@ -128,25 +128,33 @@ class TestWaitForServers(unittest.TestCase):
         with mock.patch.object(error_log, 'worker_server_pids', side_effect=lambda d: running.pop(0)), \
                 mock.patch.object(error_log.time, 'sleep'), \
                 mock.patch.object(error_log.os, 'kill') as kill:
-            self.assertEqual(error_log.wait_for_servers_to_exit('/qa', timeout=60), [])
+            self.assertEqual(error_log.wait_for_servers_to_exit('/qa', timeout=60), ([], []))
         kill.assert_not_called()
 
     def test_kills_servers_still_running_after_timeout(self):
-        with mock.patch.object(error_log, 'worker_server_pids', side_effect=[[101], [101], []]), \
+        with mock.patch.object(error_log, 'worker_server_pids', side_effect=[[101], [], []]), \
                 mock.patch.object(error_log.time, 'sleep'), \
                 mock.patch.object(error_log.os, 'kill') as kill:
-            self.assertEqual(error_log.wait_for_servers_to_exit('/qa', timeout=0), [101])
+            self.assertEqual(error_log.wait_for_servers_to_exit('/qa', timeout=0), ([101], []))
         kill.assert_called_once_with(101, error_log.signal.SIGKILL)
+
+    def test_reports_servers_that_survive_sigkill(self):
+        clock = iter(range(0, 1000, 10))
+        with mock.patch.object(error_log, 'worker_server_pids', return_value=[101]), \
+                mock.patch.object(error_log.time, 'sleep'), \
+                mock.patch.object(error_log.time, 'monotonic', side_effect=lambda: next(clock)), \
+                mock.patch.object(error_log.os, 'kill'):
+            self.assertEqual(error_log.wait_for_servers_to_exit('/qa', timeout=0), ([101], [101]))
 
 
 class TestHandleTestResult(unittest.TestCase):
 
-    def handle(self, result, crash_findings, killed_pids=None):
+    def handle(self, result, crash_findings, killed_pids=None, surviving_pids=None):
         with mock.patch.object(qa_framework, 'print_failed_test_log'), \
                 mock.patch.object(qa_framework.os, 'system'), \
                 mock.patch('sys.stdout', new_callable=io.StringIO) as out:
             failed = qa_framework.handle_test_result(io.StringIO(), 0, 'correctness', 'x.py', result,
-                                                     1, crash_findings, killed_pids)
+                                                     1, crash_findings, killed_pids, surviving_pids)
         return failed, out.getvalue()
 
     def test_passing_test_with_crash_fails(self):
@@ -164,6 +172,11 @@ class TestHandleTestResult(unittest.TestCase):
         failed, out = self.handle(0, {}, killed_pids=[101])
         self.assertFalse(failed)
         self.assertIn('Killed mysqld process(es) still running', out)
+
+    def test_server_surviving_sigkill_fails_test(self):
+        failed, out = self.handle(0, {}, killed_pids=[101], surviving_pids=[101])
+        self.assertTrue(failed)
+        self.assertIn('still running 30s after SIGKILL: 101', out)
 
     def test_passing_test_without_crash_passes(self):
         failed, out = self.handle(0, {})

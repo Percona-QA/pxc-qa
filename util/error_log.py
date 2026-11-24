@@ -116,7 +116,9 @@ def wait_for_servers_to_exit(worker_dir, timeout=SERVER_EXIT_TIMEOUT, poll_inter
     """Wait until no mysqld from this worker is running, so their error logs are
     complete before they are scanned: a crash during shutdown is written after
     SHUTDOWN returns. Servers still running after `timeout` seconds are killed
-    with SIGKILL so they can't leak into the next test. Returns the killed pids.
+    with SIGKILL so they can't leak into the next test.
+    Returns (killed, surviving): the pids that had to be killed, and those
+    still running 30s after SIGKILL (e.g. stuck in uninterruptible I/O).
     """
     deadline = time.monotonic() + timeout
     pids = worker_server_pids(worker_dir)
@@ -128,7 +130,11 @@ def wait_for_servers_to_exit(worker_dir, timeout=SERVER_EXIT_TIMEOUT, poll_inter
             os.kill(pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
+    if not pids:
+        return [], []
+    surviving = [pid for pid in worker_server_pids(worker_dir) if pid in pids]
     kill_deadline = time.monotonic() + 30
-    while pids and worker_server_pids(worker_dir) and time.monotonic() < kill_deadline:
+    while surviving and time.monotonic() < kill_deadline:
         time.sleep(poll_interval)
-    return pids
+        surviving = [pid for pid in worker_server_pids(worker_dir) if pid in pids]
+    return pids, surviving
