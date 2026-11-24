@@ -171,6 +171,14 @@ class TestShutdown(unittest.TestCase):
         self.assertGreaterEqual(elapsed, 1.5)
         self.assertFalse(process_running(self.proc.pid))
 
+    def test_shutdown_timeout_kills_known_pid_and_raises(self):
+        def hung():
+            raise db_connection.QueryTimeoutError('shutdown timed out')
+
+        with self.assertRaises(db_connection.QueryTimeoutError):
+            self.shutdown(hung, timeout=30)
+        self.assertFalse(process_running(self.proc.pid))
+
     def test_unreadable_pid_file_falls_back_to_old_behaviour(self):
         self.pid_file = os.path.join(self.tmp.name, 'missing.pid')
         result, cursor = self.shutdown(lambda: None, timeout=1)

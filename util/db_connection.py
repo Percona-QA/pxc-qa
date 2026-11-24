@@ -298,6 +298,14 @@ class DbConnection:
             return 0, pid
         except QueryTimeoutError as query_timeout_error:
             print("Timed out while shutting down node" + str(self.__node_num) + f": {query_timeout_error}")
+            if pid is not None:
+                # The server is hung; don't leave it running.
+                print("Killing node" + str(self.__node_num) + " (pid " + str(pid) + ") with SIGKILL")
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                wait_for_process_exit(pid, 30)
             raise
         except Exception as e:
             print("Error while connecting to MySQL/Shutting down", e)
