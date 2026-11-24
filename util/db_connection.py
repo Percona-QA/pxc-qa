@@ -284,9 +284,12 @@ class DbConnection:
         """ Send SHUTDOWN without waiting for mysqld to exit.
             Returns (result, pid): result is 0 unless the query timed out
             (raised, as before); pid is None if it could not be read or the
-            server could not be reached (e.g. it is already down).
+            server could not be reached (e.g. it is already down). If SHUTDOWN
+            fails after the pid was read, the pid is still returned so the
+            caller waits for that process.
         """
         cnx = None
+        pid = None
         try:
             cnx = self.connect()
             cursor = cnx.cursor(buffered=True)
@@ -298,7 +301,7 @@ class DbConnection:
             raise
         except Exception as e:
             print("Error while connecting to MySQL/Shutting down", e)
-            return 0, None
+            return 0, pid
         finally:
             # closing database connection.
             if cnx is not None and cnx.is_connected():
@@ -312,8 +315,8 @@ class DbConnection:
         if pid is None:
             return 0
         if not wait_for_process_exit(pid, timeout):
-            print("Node" + str(self.__node_num) + " (pid " + str(pid) + ") still running " + str(timeout)
-                  + "s after SHUTDOWN; killing it with SIGKILL")
+            print("Node" + str(self.__node_num) + " (pid " + str(pid) + ") did not exit before the shutdown"
+                  " timeout; killing it with SIGKILL")
             try:
                 os.kill(pid, signal.SIGKILL)
             except ProcessLookupError:

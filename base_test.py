@@ -4,9 +4,11 @@ import json
 import os
 import re
 import sys
+import time
 
 from config import WORKDIR, NODE, PT_BASEDIR, BASEDIR, SERVER, PXC_LOWER_BASE, PXC_UPPER_BASE, SKIP_TEST_EXIT_CODE
 from util import pxc_startup, ps_startup
+from util.db_connection import SHUTDOWN_TIMEOUT
 from util.utility import *
 
 workdir = WORKDIR
@@ -216,9 +218,12 @@ class BaseTest:
             except Exception as e:
                 print("Shutdown request failed for node" + str(node.get_node_number()) + ": " + str(e))
                 failed.append(node)
+        # One deadline for all nodes, counted from the SHUTDOWN requests, so
+        # waiting on one node doesn't extend another node's timeout.
+        deadline = time.monotonic() + SHUTDOWN_TIMEOUT
         for node, pid in pids:
             try:
-                if node.wait_for_shutdown(pid) != 0:
+                if node.wait_for_shutdown(pid, max(0.0, deadline - time.monotonic())) != 0:
                     failed.append(node)
             except Exception as e:
                 print("Waiting for node" + str(node.get_node_number()) + " to shut down failed: " + str(e))

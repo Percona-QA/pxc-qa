@@ -154,6 +154,23 @@ class TestShutdown(unittest.TestCase):
                 node.shutdown(timeout=1)
         self.assertEqual(cursor.queries, ['select @@pid_file'])
 
+    def test_shutdown_error_after_pid_read_still_waits(self):
+        # The connection drops while SHUTDOWN is being processed; mysqld exits 2s later.
+        delayed_exit = subprocess.Popen(['sh', '-c', 'sleep 2; kill ' + str(self.proc.pid)])
+
+        def dropped():
+            raise ConnectionError('Lost connection to MySQL server during query')
+
+        try:
+            start = db_connection.time.monotonic()
+            result, _ = self.shutdown(dropped, timeout=30)
+            elapsed = db_connection.time.monotonic() - start
+        finally:
+            delayed_exit.wait()
+        self.assertEqual(result, 0)
+        self.assertGreaterEqual(elapsed, 1.5)
+        self.assertFalse(process_running(self.proc.pid))
+
     def test_unreadable_pid_file_falls_back_to_old_behaviour(self):
         self.pid_file = os.path.join(self.tmp.name, 'missing.pid')
         result, cursor = self.shutdown(lambda: None, timeout=1)
